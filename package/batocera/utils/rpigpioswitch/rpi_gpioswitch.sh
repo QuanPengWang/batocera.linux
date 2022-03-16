@@ -8,32 +8,48 @@
 #     - cleaned off scripts
 #     - $2 argument is parsed by S92switch script now /etc/init.d
 #     - added help section, type 'rpi_gpioswitch help'
-#     - some other small improvements .... cyperghost 30.09.2019
+#     - some other small improvements
+#v1.2 - add RETROFLAG power devices (means NESPi+, MegaPi, SuperPi)
+#v1.3 - add RETROFLAG_GPI power device, the GameBoy look-a-like-device for Pi0/W
+#v1.4 - add RETROFLAG_ADV advanced reset script for NESPi+, MegaPi and SuperPi
+#v1.5 - add KINTARO for Kintaro/Roshambo cases
+#v1.6 - add ARGONONE for Rpi4 Argon One case fan control - @lbrpdx
+#v1.7 - add NESPI4 support - @lala
+#v1.8 - removed Witty-Pi (WiringPi package is not anymore!)
+#v1.9 - add POWERHAT for Rpi4 OneNineDesign case variants - @dmanlfc
+#v2.0 - add DESKPIPRO for Dekpi Pro case (RPi4) - @dmanlfc
+#v2.1 - added config switch to avoid double reboots - @dmanlfc
+#by cyperghost 11.11.2019
 
-#v1.2 - add RETROFLAG power devices (means NESPi+, MegaPi, SuperPi+)
+### Array for Powerdevices, add/remove entries here
+
+powerdevices=(
+              RETROFLAG "Including NESPi+ SuperPi and MegaPi cases" \
+              RETROFLAG_ADV "Advanced script for Retroflag housings" \
+              RETROFLAG_GPI "Retroflag GPi case for Raspberry 0" \
+              ARGONONE "Fan control for RPi4 Argon One case" \
+              KINTARO "SNES style case from SuperKuma aka ROSHAMBO" \
+              MAUSBERRY "A neat power device from Mausberry circuits" \
+              ONOFFSHIM "The cheapest power device from Pimoroni" \
+              POWERHAT "Another cheap power device from OneNineDesign" \
+              REMOTEPIBOARD_2003 "Any remote control as pswitch v2013" \
+              REMOTEPIBOARD_2005 "Any remote control as pswitch v2015" \
+              ATX_RASPI_R2_6 "ATXRaspi is a smart power controller SBC" \
+              PIN56ONOFF "py: Sliding switch for proper shutdown" \
+              PIN56PUSH "py: Momentary push button for shutdown" \
+              PIN356ONOFFRESET "py: Power button and reset button" \
+              DESKPIPRO "Fan & power control for RPi4 DeskPi Pro case" \
+              PIBOY "Fan & power & pads for Piboy DMG"
+             )
 
 #dialog for selecting your switch or power device
 function powerdevice_dialog()
 {
-    local powerdevices #array
     local switch cmd button #dialog variabels
     local currentswitch #show current switch
 
-    currentswitch=$(batocera-settings --command load --key system.power.switch)
-    [[ -z $currentswitch || $currentswitch == "#" ]] && currentswitch="disabled"
-
-    powerdevices=(
-                  RETROFLAG "Including NESPi+ SuperPi and MegaPi cases" \
-                  MAUSBERRY "A neat power device from Mausberry circuits" \
-                  ONOFFSHIM "The cheapest power device from Pimoroni" \
-                  REMOTEPIBOARD_2003 "Any remote control as pswitch v2013" \
-                  REMOTEPIBOARD_2005 "Any remote control as pswitch v2015" \
-                  WITTYPI "RTC and PowerBoost all in one board" \
-                  ATX_RASPI_R2_6 "ATXRaspi is a smart power controller SBC" \
-                  PIN56ONOFF "py: Sliding switch for proper shutdown" \
-                  PIN56PUSH "py: Momentary push button for shutdown" \
-                  PIN356ONOFFRESET "py: Power button and reset button" \
-                 )
+    currentswitch="$(/usr/bin/batocera-settings-get system.power.switch)"
+    [[ -z "$currentswitch" ]] && currentswitch="disabled"
 
     cmd=(dialog --backtitle "BATOCERA Power Switch Selection Toolset" \
                 --title " SWITCH/POWER DEVICE SETUP " \
@@ -104,6 +120,11 @@ function atx_raspi_stop()
     done
 }
 
+function atx_raspi_config()
+{
+    echo "Nothing to do"
+}
+
 # http://mausberry-circuits.myshopify.com/pages/setup
 function mausberry_start()
 {
@@ -139,14 +160,19 @@ function mausberry_stop()
     done
 }
 
+function mausberry_config()
+{
+    echo "Nothing to do"
+}
+
 # https://shop.pimoroni.com/products/onoff-shim/
 function onoffshim_start()
 {
     #Check if dtooverlay is setted in /boot/config
     #This is needed to do proper restarts/shutdowns
     if ! grep -q "^dtoverlay=gpio-poweroff,gpiopin=$2,active_low=1,input=1" "/boot/config.txt"; then
-         mount -o remount, rw /boot
-         echo "dtoverlay=gpio-poweroff,gpiopin=$2,active_low=1,input=1" >> "/boot/config.txt"
+        mount -o remount, rw /boot
+        echo "dtoverlay=gpio-poweroff,gpiopin=$2,active_low=1,input=1" >> "/boot/config.txt"
     fi
 
     # This is Button command (GPIO17 default)
@@ -175,6 +201,61 @@ function onoffshim_stop()
     echo "$1" > /sys/class/gpio/unexport
 }
 
+function onoffshim_config()
+{
+    #Check if dtooverlay is setted in /boot/config
+    #This is needed to do proper restarts/shutdowns
+    if ! grep -q "^dtoverlay=gpio-poweroff,gpiopin=$2,active_low=1,input=1" "/boot/config.txt"; then
+        mount -o remount, rw /boot
+        echo "dtoverlay=gpio-poweroff,gpiopin=$2,active_low=1,input=1" >> "/boot/config.txt"
+    fi
+}
+
+# https://www.raspberrypiplastics.com/power-hat-board
+# aka MultiComp Pro Raspberry Pi 4 case
+function powerhat_start()
+{
+    #Check if dtooverlay is setted in /boot/config.txt
+    #This is needed to do proper restarts/shutdowns  
+    # (GPIO18 default)
+    if ! grep -q "^dtoverlay=gpio-poweroff,gpiopin=$1,active_low=0" "/boot/config.txt"; then
+        mount -o remount,rw /boot
+        echo "" >> "/boot/config.txt"
+        echo "[powerhat]" >> "/boot/config.txt"
+        echo "dtoverlay=gpio-poweroff,gpiopin=$1,active_low=0" >> "/boot/config.txt"
+    fi
+
+    # This is Button command (GPIO17 default)
+    if ! grep -q "^dtoverlay=gpio-shutdown,gpiopin=$2,active_low=1,gpio_pull=up" "/boot/config.txt"; then
+        mount -o remount,rw /boot
+        echo "dtoverlay=gpio-shutdown,gpiopin=$2,active_low=1,gpio_pull=up" >> "/boot/config.txt"
+    fi
+}
+
+function powerhat_stop()
+{
+    # Do nothing to GPIO, handled by power hat
+    echo "had 'power hat' shutdown"
+}
+
+function powerhat_config()
+{
+    #Check if dtooverlay is setted in /boot/config.txt
+    #This is needed to do proper restarts/shutdowns  
+    # (GPIO18 default)
+    if ! grep -q "^dtoverlay=gpio-poweroff,gpiopin=$1,active_low=0" "/boot/config.txt"; then
+        mount -o remount,rw /boot
+        echo "" >> "/boot/config.txt"
+        echo "[powerhat]" >> "/boot/config.txt"
+        echo "dtoverlay=gpio-poweroff,gpiopin=$1,active_low=0" >> "/boot/config.txt"
+    fi
+    # This is Button command (GPIO17 default)
+    if ! grep -q "^dtoverlay=gpio-shutdown,gpiopin=$2,active_low=1,gpio_pull=up" "/boot/config.txt"; then
+        mount -o remount,rw /boot
+        echo "dtoverlay=gpio-shutdown,gpiopin=$2,active_low=1,gpio_pull=up" >> "/boot/config.txt"
+    fi
+}
+
 # http://www.msldigital.com/pages/support-for-remotepi-board-2013
 # http://www.msldigital.com/pages/support-for-remotepi-board-plus-2015
 function msldigital_start()
@@ -200,8 +281,8 @@ function msldigital_start()
 
 function msldigital_stop()
 {
-    if [ -f "/tmp/shutdown.please" -o -f "/tmp/poweroff.please" ]; then
-        if [ -f "/tmp/shutdown.please" -a "$CONFVALUE" = "REMOTEPIBOARD_2005" ]; then
+    if [ -f "/tmp/shutdown.please" ] || [ -f "/tmp/poweroff.please" ]; then
+        if [ -f "/tmp/shutdown.please" ] && [ "$CONFVALUE" = "REMOTEPIBOARD_2005" ]; then
             # Init GPIO
             GPIOpin=15
             echo "$GPIOpin" > /sys/class/gpio/export
@@ -230,62 +311,9 @@ function msldigital_stop()
     done
 }
 
-# http://www.uugear.com/witty-pi-realtime-clock-power-management-for-raspberry-pi/
-# https://github.com/uugear/Witty-Pi/blob/master/wittyPi/daemon.sh
-function wittyPi_start()
+function msldigital_config()
 {
-    # LED on GPIO-17 (wiringPi pin 0)
-    led_pin=$1
-
-    # halt by GPIO-4 (wiringPi pin 7)
-    halt_pin=$2
-
-    # make sure the halt pin is input with internal pull up
-    gpio mode $halt_pin up
-    gpio mode $halt_pin in
-
-    # delay until GPIO pin state gets stable
-    counter=0
-    while [ $counter -lt 10 ]; do  # increase this value if it needs more time
-        if [ $(gpio read $halt_pin) == '1' ] ; then
-            counter=$(($counter+1))
-        else
-            counter=0
-        fi
-        sleep 1
-    done
-
-    # wait for GPIO-4 (wiringPi pin 7) falling, or alarm B
-    while true; do
-        gpio wfi $halt_pin falling
-        sleep 0.05  # ignore short pull down (increase this value to ignore longer pull down)
-        if [ $(gpio read $halt_pin) == '0' ] ; then
-            break
-        fi
-    done
-
-    # Switch off
-    touch "/tmp/poweroff.please"
-    shutdown -h now
-}
-
-function wittyPi_stop()
-{
-    # LED on GPIO-17 (wiringPi pin 0)
-    led_pin=$1
-
-    # halt by GPIO-4 (wiringPi pin 7)
-    halt_pin=$2
-
-    # light the white LED
-    if [ -f "/tmp/shutdown.please" -o -f "/tmp/poweroff.please" ]; then
-        gpio mode $led_pin out
-        gpio write $led_pin 1
-    fi
-
-    # restore GPIO-4
-    gpio mode $halt_pin in
-    gpio mode $halt_pin up
+    echo "Nothing to do"
 }
 
 function pin356_start()
@@ -299,8 +327,13 @@ function pin356_start()
 function pin356_stop()
 {
     if [[ -f /tmp/rpi-pin356-power.pid ]]; then
-        kill `cat /tmp/rpi-pin356-power.pid`
+        kill $(cat /tmp/rpi-pin356-power.pid)
     fi
+}
+
+function pin356_config()
+{
+    echo "Nothing to do"
 }
 
 function pin56_start()
@@ -315,42 +348,289 @@ function pin56_start()
 function pin56_stop()
 {
     if [[ -f /tmp/rpi-pin56-power.pid ]]; then
-        kill `cat /tmp/rpi-pin56-power.pid`
+        kill $(cat /tmp/rpi-pin56-power.pid)
     fi
+}
+
+function pin56_config()
+{
+    echo "Nothing to do"
 }
 
 #https://www.retroflag.com
 function retroflag_start()
 {
-    rpi-retroflag-SafeShutdown &
+    #Check if dtooverlay is setted in /boot/config -- Do this arch related!
+    case $(cat /usr/share/batocera/batocera.arch) in
+        rpi4)
+            if ! grep -q "^dtoverlay=gpio-poweroff,gpiopin=4,active_low=1,input=1" "/boot/config.txt"; then
+                mount -o remount, rw /boot
+                echo "# Overlay setup for proper powercut, needed for Retroflag cases" >> "/boot/config.txt"
+                echo "dtoverlay=gpio-poweroff,gpiopin=4,active_low=1,input=1" >> "/boot/config.txt"
+            fi
+        ;;
+    esac
+
+    #$1 = rpi-retroflag-SafeShutdown/rpi-retroflag-GPiCase/rpi-retroflag-AdvancedSafeShutdown
+    "$1" &
     pid=$!
-    echo "$pid" > /tmp/rpi-retroflag-SafeShutdown.pid
+    echo "$pid" > "/tmp/$1.pid"
     wait "$pid"
 }
 
 function retroflag_stop()
 {
-    pid_file="/tmp/rpi-retroflag-SafeShutdown.pid"
+    pid_file="/tmp/$1.pid"
     if [[ -e $pid_file ]]; then
         pid=$(cat $pid_file)
         kill $(pgrep -P $pid)
     fi
 }
 
+function retroflag_config()
+{
+    #Check if dtooverlay is setted in /boot/config -- Do this arch related!
+    case $(cat /usr/share/batocera/batocera.arch) in
+        rpi4)
+            if ! grep -q "^dtoverlay=gpio-poweroff,gpiopin=4,active_low=1,input=1" "/boot/config.txt"; then
+                mount -o remount, rw /boot
+                echo "# Overlay setup for proper powercut, needed for Retroflag cases" >> "/boot/config.txt"
+                echo "dtoverlay=gpio-poweroff,gpiopin=4,active_low=1,input=1" >> "/boot/config.txt"
+            fi
+        ;;
+    esac
+}
+
+#https://www.argon40.com/argon-one-raspberry-pi-4-case.html
+function argonone_start()
+{
+    if ! grep -q "^dtparam=i2c_arm=on" "/boot/config.txt"; then
+         mount -o remount, rw /boot
+         echo "dtparam=i2c_arm=on" >> "/boot/config.txt"
+    fi
+    if ! grep -q "^dtparam=i2c-1=on" "/boot/config.txt"; then
+         mount -o remount, rw /boot
+         echo "dtparam=i2c-1=on" >> "/boot/config.txt"
+    fi
+    if ! grep -q "^enable_uart=1" "/boot/config.txt"; then
+         mount -o remount, rw /boot
+         echo "enable_uart=1" >> "/boot/config.txt"
+    fi
+    modprobe i2c-dev
+    modprobe i2c-bcm2708
+    modprobe i2c-bcm2835
+    /usr/bin/rpi-argonone start &
+    wait $!
+}
+
+function argonone_stop()
+{
+    pid=$(pgrep -f rpi-argonone | head -n 1)
+    if ! [ -z "${pid}" ]; then
+         kill -9 "${pid}"
+    fi
+
+    if [ -f /tmp/shutdown.please ]; then
+        # force a power shutdown from GPIO block
+        /usr/bin/rpi-argonone halt &
+    else
+        # only stop fan (keep power block on)
+        /usr/bin/rpi-argonone stop &
+    fi
+}
+
+function argonone_config()
+{
+    if ! grep -q "^dtparam=i2c_arm=on" "/boot/config.txt"; then
+         mount -o remount, rw /boot
+         echo "dtparam=i2c_arm=on" >> "/boot/config.txt"
+    fi
+    if ! grep -q "^dtparam=i2c-1=on" "/boot/config.txt"; then
+         mount -o remount, rw /boot
+         echo "dtparam=i2c-1=on" >> "/boot/config.txt"
+    fi
+    if ! grep -q "^enable_uart=1" "/boot/config.txt"; then
+         mount -o remount, rw /boot
+         echo "enable_uart=1" >> "/boot/config.txt"
+    fi
+}
+
+#https://www.kintaro.co
+function kintaro_start()
+{
+    rpi-kintaro-SafeShutdown &
+    pid=$!
+    echo "$pid" > "/tmp/rpi-kintaro-SafeShutdown.pid"
+    wait "$pid"
+}
+
+function kintaro_stop()
+{
+    pid_file="/tmp/rpi-kintaro-SafeShutdown.pid"
+    if [[ -e $pid_file ]]; then
+        kill $(cat $pid_file)
+
+    fi
+}
+
+function kintaro_config()
+{
+    echo "Nothing to do"
+}
+
+#https://deskpi.com/products/deskpi-pro-for-raspberry-pi-4
+function deskpipro_start()
+{
+    # Check config.txt for fan & front USB
+    if ! grep -q "^dtoverlay=dwc2,dr_mode=host" "/boot/config.txt"; then
+        echo "*** Adding DeskPi Pro Case Fan config.txt parameter ***"
+        mount -o remount, rw /boot
+        # Remove other dtoverlay=dwc2 type configs to avoid conflicts
+        sed -i '/dtoverlay=dwc2*/d' /boot/config.txt
+        echo "" >> "/boot/config.txt"
+        echo "[Deskpi Pro Case]" >> "/boot/config.txt"
+        echo "dtoverlay=dwc2,dr_mode=host" >> "/boot/config.txt"
+    fi
+    # Check config.txt for Infrared
+    if grep -Fxq "#dtoverlay=gpio-ir,gpio_pin=17" "/boot/config.txt"; then
+        echo "*** Adding DeskPi Pro Case Infrared config.txt parameter ***"
+        mount -o remount, rw /boot
+        sed -i 's/#dtoverlay=gpio-ir,gpio_pin=17/dtoverlay=gpio-ir,gpio_pin=17/g' /boot/config.txt
+    fi
+    # Add Infrared parameters
+    if ! grep -q "driver = default" "/etc/lirc/lirc_options.conf"; then
+        echo "*** Adding DeskPi Pro Case Infrared lirc_options.conf parameters ***"
+        mount -o remount, rw /boot
+        echo "driver = default" >> "/etc/lirc/lirc_options.conf"
+        echo "device = /dev/lirc0" >> "/etc/lirc/lirc_options.conf"
+    fi
+    # Check if the kernel module is loaded
+    if lsmod | grep dwc2 &> /dev/null ; then
+        echo "*** dwc2 module is loaded ***"
+    else
+        echo "*** loading dwc2 module ***"
+        modprobe dwc2
+    fi
+    echo "*** Starting DeskPi Pro Case Fan ***"
+    /usr/bin/pwmFanControl &
+}
+
+function deskpipro_stop()
+{
+    echo "*** Stopping DeskPi Pro Case Fan ***"
+    /usr/bin/fanStop && /usr/bin/safecutoffpower
+}
+
+function deskpipro_config()
+{
+    # Check config.txt for fan & front USB
+    if ! grep -q "^dtoverlay=dwc2,dr_mode=host" "/boot/config.txt"; then
+        echo "*** Adding DeskPi Pro Case Fan config.txt parameter ***"
+        mount -o remount, rw /boot
+        # Remove other dtoverlay=dwc2 type configs to avoid conflicts
+        sed -i '/dtoverlay=dwc2*/d' /boot/config.txt
+        echo "" >> "/boot/config.txt"
+        echo "[Deskpi Pro Case]" >> "/boot/config.txt"
+        echo "dtoverlay=dwc2,dr_mode=host" >> "/boot/config.txt"
+    fi
+    # Check config.txt for Infrared
+    if grep -Fxq "#dtoverlay=gpio-ir,gpio_pin=17" "/boot/config.txt"; then
+        echo "*** Adding DeskPi Pro Case Infrared config.txt parameter ***"
+        mount -o remount, rw /boot
+        sed -i 's/#dtoverlay=gpio-ir,gpio_pin=17/dtoverlay=gpio-ir,gpio_pin=17/g' /boot/config.txt
+    fi
+    # Add Infrared parameters
+    if ! grep -q "driver = default" "/etc/lirc/lirc_options.conf"; then
+        echo "*** Adding DeskPi Pro Case Infrared lirc_options.conf parameters ***"
+        mount -o remount, rw /boot
+        echo "driver = default" >> "/etc/lirc/lirc_options.conf"
+        echo "device = /dev/lirc0" >> "/etc/lirc/lirc_options.conf"
+    fi
+    # Check if the kernel module is loaded
+    if lsmod | grep dwc2 &> /dev/null ; then
+        echo "*** dwc2 module is loaded ***"
+    else
+        echo "*** loading dwc2 module ***"
+        modprobe dwc2
+    fi
+}
+
+#https://www.experimentalpi.com/PiBoy-DMG--Kit_p_18.html
+function piboy_start()
+{
+    PIBOY_CONFIG_FILE=/boot/config.txt
+    PIBOY_CHECK=$(tail "${PIBOY_CONFIG_FILE}" | grep PIBOY | sed 's/PIBOY=//g')
+    PIBOY_CONFIG='
+# ====== PiBoy Case setup section =====
+avoid_warnings=2
+dtoverlay=vc4-fkms-v3d
+hdmi_group=2
+hdmi_mode=85
+hdmi_drive=2
+audio_pwm_mode=2
+dtoverlay=audremap,pins_18_19
+##Enable DPI gpio
+gpio=0-9,12-17,20-25=a2
+audio_pwm_mode=2
+dtoverlay=audremap,pins_18_19
+##DPI LCD settings
+dpi_group=2
+dpi_mode=87
+dpi_output_format=0x070016
+dpi_timings=640 1 44 2 42 480 1 19 2 17 0 0 0 85 0 32000000 1
+enable_dpi_lcd=1
+##Disable ACT LED
+dtparam=act_led_trigger=none
+dtparam=act_led_activelow=off
+##Disable PWR LED
+dtparam=pwr_led_trigger=none
+dtparam=pwr_led_activelow=off
+##Turn off ethernet port LEDs
+dtparam=eth_led0=4
+dtparam=eth_led1=4
+PIBOY=true
+# ====== PiBoy Case toggle section ====='
+
+    if test "${PIBOY_CHECK}" = true
+    then
+        echo "Check Success Piboy is installed"
+        python /usr/bin/piboy_fan_ctrl.py &
+        python /usr/bin/piboy_aud_ctrl.py &
+        python /usr/bin/piboy_power_ctrl.py &
+        modprobe xpi_gamecon.ko
+    else
+        echo "Check Error Piboy is not installed"
+        mount -o remount,rw /boot
+        sed -i 's/dtoverlay=vc4-kms-v3d/#dtoverlay=vc4-kms-v3d/g' /boot/config.txt
+        sed -i 's/dtoverlay=vc4-fkms-v3d/#dtoverlay=vc4-fkms-v3d/g' /boot/config.txt
+        echo -e "${PIBOY_CONFIG}" >> "${PIBOY_CONFIG_FILE}" || exit 1
+        mount -o remount,ro /boot
+        shutdown -h now
+    fi
+}
+
+function piboy_stop()
+{
+    /etc/init.d/S31emulationstation stop && echo 0 > /sys/kernel/xpi_gamecon/flags && /sbin/rmmod xpi_gamecon && shutdown -h now
+}
+
+function piboy_config()
+{
+    echo "Nothing to do"
+}
 
 #-----------------------------------------
 #------------------ MAIN -----------------
 #-----------------------------------------
 
-# First parameter must be start or stop
+# First parameter must be start, stop or config
 # Followed by switch parameter from S92switch
 # If you start by CLI a dialog will appear
 
-if [[ "$1" == "start" || "$1" == "stop" ]]; then
-    [[ -n "$2" ]] || exit 1
-    CONFVALUE="$2"
+if [[ "$1" == "start" || "$1" == "stop" || "$1" == "config" ]]; then
+    [[ -n "$2" ]] && CONFVALUE="$2" || exit 1
 elif [[ -z "$1" ]]; then
-    CONFVALUE="DIALOG"
+    CONFVALUE="--DIALOG"
 elif [[ "${1^^}" =~ "HELP" ]]; then
     CONFVALUE="--HELP"
 else
@@ -368,49 +648,64 @@ case "$CONFVALUE" in
     "ONOFFSHIM")
         onoffshim_$1 17 4
     ;;
+    "POWERHAT")
+        powerhat_$1 18 17
+    ;;
     "REMOTEPIBOARD_2003")
         msldigital_$1 22
     ;;
     "REMOTEPIBOARD_2005")
         msldigital_$1 14
     ;;
-    "WITTYPI")
-        wittyPi_$1 0 7
-    ;;
-    "PIN56ONOFF")
-        pin56_$1 onoff
-    ;;
-    "PIN56PUSH")
-        echo "will start pin56_$1"
-        pin56_$1 push
+    "PIN56PUSH"|"PIN56ONOFF")
+        pin56_$1
     ;;
     "PIN356ONOFFRESET")
-        echo "will start pin356_$1"
-        pin356_$1 noparam
+        pin356_$1
     ;;
-     "RETROFLAG")
-         retroflag_$1
+    "RETROFLAG")
+        retroflag_$1 rpi-retroflag-SafeShutdown
     ;;
-    "DIALOG")
+    "RETROFLAG_GPI")
+        retroflag_$1 rpi-retroflag-GPiCase
+    ;;
+    "RETROFLAG_ADV")
+        retroflag_$1 rpi-retroflag-AdvancedSafeShutdown
+    ;;
+    "ARGONONE")
+        argonone_$1
+    ;;
+    "KINTARO")
+        kintaro_$1
+    ;;
+    "DESKPIPRO")
+        deskpipro_$1
+    ;;
+    "PIBOY")
+        piboy_$1
+    ;;
+    "--DIALOG")
         # Go to selection dialog
         switch="$(powerdevice_dialog)"
 
         # Write values and display MsgBox
-        [[ -n $switch ]] || { echo "Abort! Nothing changed...."; exit 1;}
-        batocera-settings --command write --key system.power.switch --value "$switch"
+        [[ -n "$switch" ]] || { echo "Abort! Nothing changed...."; exit 1; }
+        /usr/bin/batocera-settings-set system.power.switch "$switch"
         [[ $? -eq 0 ]] && info_msg="No error! Everything went okay!" || info_msg="An error occurred!"
         dialog --backtitle "BATOCERA Power Switch Selection Toolkit" \
                --title " STATUS OF NEW VALUE " \
-               --msgbox "${info_msg}\n\n$(batocera-settings status system.power.switch)" 0 0
+               --msgbox "${info_msg}\n\n$(/usr/bin/batocera-settings-get system.power.switch)" 0 0
     ;;
-    --HELP|*)
-        [[ $CONFVALUE == "--HELP" ]] || echo "Wrong argument given to 'start' or 'stop' parameter"
+    --HELP)
+        echo "Try: $(basename "$0") {start|stop|config} <value>"
         echo
-        echo "Try: rpi_gpioswitch.sh [start|stop] [value]"
+        echo -e -n "Valid values are:\t"
+        for i in $(seq 1 2 ${#powerdevices[@]}); do
+            echo -e -n "${powerdevices[i-1]}\n\t\t\t"
+        done
         echo
-        echo "Vaild values are: REMOTEPIBOARD_2003, REMOTEPIBOARD_2005, WITTYPI 
-                  ATX_RASPI_R2_6, MAUSBERRY, ONOFFSHIM, RETROFLAG 
-                  PIN56ONOFF, PIN56PUSH, PIN356ONOFFRESET"
-        exit 1
     ;;
+    *)
+    echo "rpi_gpioswitch: False parameter to S92switch 'start', 'stop' or 'config' cmd. use --help" >&2
+    exit 1
 esac

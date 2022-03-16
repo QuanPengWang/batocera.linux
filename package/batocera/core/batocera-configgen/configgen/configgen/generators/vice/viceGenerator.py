@@ -4,7 +4,8 @@ import batoceraFiles
 from generators.Generator import Generator
 import os.path
 import glob
-
+from . import viceConfig
+from . import viceControllers
 
 class ViceGenerator(Generator):
 
@@ -14,11 +15,16 @@ class ViceGenerator(Generator):
     # Main entry of the module
     # Return command
     def generate(self, system, rom, playersControllers, gameResolution):
-        romPath = os.path.dirname(rom)
-        romName = os.path.splitext(os.path.basename(rom))[0]
 
-        commandArray = [batoceraFiles.batoceraBins[system.config['emulator']], 
-                        "-config", batoceraFiles.viceConfig,
-                        "-autostart", rom]
+        if not os.path.exists(os.path.dirname(batoceraFiles.viceConfig)):
+            os.makedirs(os.path.dirname(batoceraFiles.viceConfig))
 
-        return Command.Command(array=commandArray,  env={"SDL_VIDEO_GL_DRIVER": "/usr/lib/libGLESv2.so"})
+        # configuration file
+        viceConfig.setViceConfig(batoceraFiles.viceConfig, system)
+
+        # controller configuration
+        viceControllers.generateControllerConfig(batoceraFiles.viceConfig, playersControllers)
+
+        commandArray = [batoceraFiles.batoceraBins[system.config['emulator']] + system.config['core'], "-autostart", rom]
+
+        return Command.Command(array=commandArray, env={"XDG_CONFIG_HOME":batoceraFiles.CONF})

@@ -1,8 +1,6 @@
-diff --git a/Makefile.libretro b/Makefile.libretro
-index e46f3a2..17f86bc 100755
---- a/Makefile.libretro
-+++ b/Makefile.libretro
-@@ -4,6 +4,13 @@ ZLIB_DIR = $(LIBRETRO_DIR)/utils/zlib
+--- a/Makefile.libretro	2021-01-23 16:29:22.070372812 +0100
++++ b/Makefile.libretro	2021-01-23 16:29:53.150371703 +0100
+@@ -4,6 +4,13 @@
  STATIC_LINKING=0
  STATIC_LINKING_LINK=0
  
@@ -16,61 +14,54 @@ index e46f3a2..17f86bc 100755
  ifeq ($(platform),)
  platform = unix
  ifeq ($(shell uname -a),)
-@@ -79,6 +86,28 @@ else ifeq ($(platform), osx)
-    SHARED := -dynamiclib
-    PLATFLAGS := -DLSB_FIRST -DALIGN_DWORD
+@@ -73,6 +80,22 @@
+ 	endif
+ #######################################
  
-+# ARM
-+else ifneq (,$(findstring armv,$(platform)))
-+   CC = gcc
++# (armv8 a35, hard point, neon based) ###
++# PlayStation Classic 
++else ifeq ($(platform), classic_armv8_a35)
 +   TARGET := $(TARGET_NAME)_libretro.so
-+   fpic := -fPIC -fsigned-char
-+   SHARED :=  -lz -lpthread -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined
++	fpic := -fPIC
++	SHARED := -lz -lpthread -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined
++	CFLAGS += -Ofast \
++	-fuse-linker-plugin \
++	-fno-stack-protector -fno-ident -fomit-frame-pointer \
++	-fmerge-all-constants -ffast-math -funroll-all-loops \
++	-marm -mcpu=cortex-a35 -mfpu=neon-fp-armv8 -mfloat-abi=hard
++	HAVE_NEON = 1
++	ARCH = arm
++	LDFLAGS += -marm -mcpu=cortex-a35 -mfpu=neon-fp-armv8 -mfloat-abi=hard -Ofast -flto -fuse-linker-plugin
 +   PLATFLAGS := -DLSB_FIRST -DALIGN_DWORD
-+   CFLAGS += -marm
-+ifneq (,$(findstring neon,$(platform)))
-+   CFLAGS += -mfpu=neon
-+   ASFLAGS += -mfpu=neon
-+   HAVE_NEON = 1
-+endif
-+ifneq (,$(findstring softfloat,$(platform)))
-+   CFLAGS += -mfloat-abi=softfp
-+   ASFLAGS += -mfloat-abi=softfp
-+else ifneq (,$(findstring hardfloat,$(platform)))
-+   CFLAGS += -mfloat-abi=hard
-+   ASFLAGS += -mfloat-abi=hard
-+endif
-+   CFLAGS += -DARM
-+
- # iOS
- else ifneq (,$(findstring ios,$(platform)))
- 
-@@ -155,6 +184,10 @@ else
++#######################################
+ else ifeq ($(platform), osx)
+ 	TARGET := $(TARGET_NAME)_libretro.dylib
+    fpic := -fPIC
+@@ -191,6 +214,10 @@
  endif
- CFLAGS := -fsigned-char -D__LIBRETRO__ -fno-builtin $(CFLAGS)
+ CFLAGS += -fsigned-char -D__LIBRETRO__ -fno-builtin
  
 +ifeq ($(IPFSUPPORT), 1)
-+    PLATFLAGS += -DHAVE_CAPSIMAGE=1
++    PLATFLAGS += -DHAVE_CAPSIMAGE=1 -DCAPSIMAGE_VERSION=5 -D__cdecl= 
 +endif
 +
- CFLAGS := $(fpic) $(CFLAGS) $(PLATFLAGS)
+ CFLAGS   += $(fpic) $(PLATFLAGS)
  CXXFLAGS := $(CFLAGS)
  CPPFLAGS := $(CFLAGS)
-@@ -176,12 +209,16 @@ OBJECTS := $(SOURCES_C:.c=.o)
+@@ -210,11 +237,15 @@
  
  all: $(TARGET)
  
 +ifeq ($(IPFSUPPORT), 1)
-+    INCFLAGS += -I$(STAGING_DIR)/usr/lib/capsimage
++    INCFLAGS += -I$(STAGING_DIR)/usr/include
 +endif
 +
  $(TARGET): $(OBJECTS)
- 	@echo "** BUILDING $(TARGET) FOR PLATFORM $(platform) **"
  ifeq ($(STATIC_LINKING_LINK),1)
  	$(AR) rcs $@ $(OBJECTS) 
  else
--	$(CC) $(CFLAGS) $(INCFLAGS) $(LDFLAGS) $(OBJECTS) -o $@ -lm -lz $(SHARED)
-+	$(CC) $(CFLAGS) $(INCFLAGS) $(LDFLAGS) $(OBJECTS) -o $@ -lm -lz $(SHARED) -lpthread $(CAPS_LIB)
+-	$(CC) $(CFLAGS) $(INCFLAGS) $(LDFLAGS) $(OBJECTS) -o $@ -lm $(ZLIB) $(SHARED)
++	$(CC) $(CFLAGS) $(INCFLAGS) $(LDFLAGS) $(OBJECTS) -o $@ -lm $(ZLIB) $(SHARED) -lpthread $(CAPS_LIB)
  endif
- 	@echo "** BUILD SUCCESSFUL! GG NO RE **"
  
+ %.o: %.c

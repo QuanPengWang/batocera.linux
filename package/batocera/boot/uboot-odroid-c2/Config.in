@@ -1,2 +1,4 @@
 config BR2_PACKAGE_UBOOT_ODROID_C2
-    bool "odroidc2-uboot"
+        bool "uboot files for odroid c2"
+        help
+          uboot files for odroid c2

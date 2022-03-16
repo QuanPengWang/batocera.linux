@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 
 if [ ! "$1" ];then
-	echo -e "usage : batocera-config [command] [args]\nWith command in\n\toverscan [enable|disable]\n\tlsaudio\n\tgetaudio\n\taudio [hdmi|jack|auto|custom|x,y]\n\tcanupdate\n\tupdate\n\twifi [enable|disable] ssid key\n\tstorage [current|list|INTERNAL|ANYEXTERNAL|RAM|DEV UUID]\n\tsetRootPassword [password]\n\tgetRootPassword\n\ttz [|tz]"
+	printf "usage : batocera-config [command] [args]\nWith command in\n\toverscan [enable|disable]\n\tcanupdate\n\tupdate\n\tstorage [current|list|INTERNAL|ANYEXTERNAL|RAM|DEV UUID]\n\tsetRootPassword [password]\n\tgetRootPassword\n\ttz [|tz]\n"
 	exit 1
 fi
 configFile="/boot/config.txt"
@@ -12,9 +12,9 @@ extra1="$3"
 extra2="$4"
 extra3="$5"
 extra4="$6"
-arch=`cat /usr/share/batocera/batocera.arch`
+board=`cat /boot/boot/batocera.board`
 
-updateurl="https://batocera-linux.xorhub.com/upgrades"
+updateurl="https://updates.batocera.org"
 
 preBootConfig() {
     mount -o remount,rw /boot
@@ -38,13 +38,12 @@ bato_config_set_value () {
 }
 
 log=/userdata/system/logs/batocera.log
-systemsetting="python /usr/lib/python2.7/site-packages/configgen/settings/batoceraSettings.py"
 
 echo "---- batocera-config ----" >> $log
 
-if [ "$command" == "getRootPassword" ]; then
+if [ "$command" = "getRootPassword" ]; then
     # security disabled, force the default one without changing boot configuration
-    securityenabled="`$systemsetting  -command load -key system.security.enabled`"
+    securityenabled="$(/usr/bin/batocera-settings-get system.security.enabled)"
     if [ "$securityenabled" != "1" ];then
 	echo "linux"
 	exit 0
@@ -62,11 +61,11 @@ if [ "$command" == "getRootPassword" ]; then
     exit 0
 fi
 
-if [ "$command" == "setRootPassword" ]; then
+if [ "$command" = "setRootPassword" ]; then
     PASSWD=${2}
 
     # security disabled, don't change
-    securityenabled="`$systemsetting  -command load -key system.security.enabled`"
+    securityenabled="$(/usr/bin/batocera-settings-get system.security.enabled)"
     if [ "$securityenabled" != "1" ];then
 	exit 0
     fi
@@ -101,8 +100,8 @@ if [ "$command" == "setRootPassword" ]; then
     fi    
 fi
 
-if [ "$command" == "overscan" ]; then
-if [ "$mode" == "set" ];then
+if [ "$command" = "overscan" ]; then
+if [ "$mode" = "set" ];then
 # set will set overscan values abd  also enable this mode
 	if [ -z "$extra1" ] || [ -z "$extra2" ] || [ -z "$extra3" ] || [ -z "$extra4" ]; then
 		echo "$0 $command $mode needs 4 arguments:"
@@ -126,11 +125,11 @@ if [ "$mode" == "set" ];then
 fi
 if [ -f "$configFile" ];then
         preBootConfig
-	if [ "$mode" == "enable" ];then
+	if [ "$mode" = "enable" ];then
 		echo "enabling overscan" >> $log
 		bato_config_set_value disable_overscan 0
 		bato_config_set_value overscan_scale 1
-	elif [ "$mode" == "disable" ];then
+	elif [ "$mode" = "disable" ];then
                 echo "disabling overscan" >> $log
 		bato_config_set_value disable_overscan 1
 		bato_config_set_value overscan_scale 0
@@ -145,101 +144,26 @@ else
 fi
 fi
 
-if [ "$command" == "lsoutputs" ]
+if [ "$command" = "lsoutputs" ]
 then
     echo "auto"
     batocera-resolution listOutputs
 fi
 
-if [ "$command" == "lsaudio" ];then
-    if [[ "${arch}" =~ "rpi" ]]
-    then
-	echo "hdmi"
-	echo "jack"
-	echo "auto"
-    elif [[ "${arch}" =~ "x86" ]];then
-	echo "auto"
-	echo "custom"
-	LANG=C aplay -l | grep -E '^card [0-9]*:' | sed -e s+'^card \([0-9]*\): [^,]*, device \([0-9]*\): [^\[]* \[\([^]]*\)].*$'+'\1,\2 \3'+
-    else
-	echo "auto"
-    fi
-fi
-
-if [ "$command" == "getaudio" ];then
-    $systemsetting -command load -key audio.device
-    exit 0
-fi
-
-if [ "$command" == "audio" ];then
-    # this code is specific to the rpi
-    # don't set it on other boards
-    # find a more generic way would be nice
-    if [[ "${arch}" =~ "rpi" ]]
-    then
-	# this is specific to the rpi
-	cmdVal="0"
-	if [ "$mode" == "hdmi" ];then
-	    cmdVal="2"
-	elif [ "$mode" == "jack" ];then
-	    cmdVal="1"
-	fi
-        echo "setting audio output mode : $mode" >> $log
-	amixer cset numid=3 $cmdVal || exit 1
-    elif [[ "${arch}" =~ "x86" ]]
-    then
-	# auto: no .asoundrc file
-	# custom: don't touch the .asoundrc file
-	# any other, create the .asoundrd file
-	if [ "$mode" == "auto" ];then
-	    rm -rf /userdata/system/.asoundrc || exit 1
-	elif [ "$mode" != "custom" ];then
-	    if echo "${mode}" | grep -qE '^[0-9]*,[0-9]* '
-	    then
-		cardnb=$(echo "${mode}" | sed -e s+'^\([0-9]*\),.*$'+'\1'+)
-		devicenb=$(echo "${mode}" | sed -e s+'^[0-9]*,\([0-9]*\) .*$'+'\1'+)
-		cat > /userdata/system/.asoundrc <<EOF
-	    pcm.!default { type plug slave { pcm "hw:${cardnb},${devicenb}" } }
-	    ctl.!default { type hw card ${cardnb} }
-EOF
-		aplay "/usr/share/sounds/Mallet.wav"
-	    fi
-	fi
-    fi
-    exit 0
-fi
-
-if [ "$command" == "volume" ];then
-	if [ "$mode" != "" ];then
-        	echo "setting audio volume : $mode" >> $log
-
-		# on my pc, the master is turned off at boot
-		# i don't know what are the rules to set here.
-		amixer set Master unmute      || exit 1
-                amixer set Master    -- ${mode}% || exit 1
-
-		# maximize the sound to be sure it's not 0, allow errors
-		amixer set PCM       -- 100% #|| exit 1
-		amixer set Headphone -- 100% #|| exit 1
-		exit 0
-	fi
-	exit 12
-fi
-
-if [ "$command" == "gpiocontrollers" ];then
+if [ "$command" = "gpiocontrollers" ];then
 	command="module"
 	mode="load"
 	extra1="mk_arcade_joystick_rpi"
 	extra2="map=1,2"
 fi
 
-if [ "$command" == "module" ];then
+if [ "$command" = "module" ];then
 	modulename="$extra1"
 	map="$extra2"
 	# remove in all cases
 	rmmod /lib/modules/`uname -r`/extra/${modulename}.ko >> $log
 
-        if [ "$mode" == "load" ];then
+        if [ "$mode" = "load" ];then
 	        echo "loading module $modulename args = $map" >> $log
 		insmod /lib/modules/`uname -r`/extra/${modulename}.ko $map >> $log
 		[ "$?" ] || exit 1
@@ -247,14 +171,14 @@ if [ "$command" == "module" ];then
 	exit 0
 fi
 
-if [ "$command" == "canupdate" ];then
-	updatetype="`$systemsetting  -command load -key updates.type`"
+if [ "$command" = "canupdate" ];then
+	updatetype="$(/usr/bin/batocera-settings-get updates.type)"
 	if test "${updatetype}" != "stable" -a "${updatetype}" != "unstable" -a "${updatetype}" != "beta"
 	then
 		# force a default value in case the value is removed or miswritten
 		updatetype="stable"
 	fi
-	settingsupdateurl="`$systemsetting  -command load -key updates.url`"
+	settingsupdateurl="$(/usr/bin/batocera-settings-get updates.url)"
 
 	# customizable upgrade url website
 	if test -n "${settingsupdateurl}"
@@ -262,93 +186,50 @@ if [ "$command" == "canupdate" ];then
 	    updateurl="${settingsupdateurl}"
 	fi
 
-	#echo "Update url: ${updateurl}/${arch}/${updatetype}/last"
-	available=`wget -qO- ${updateurl}/${arch}/${updatetype}/last/batocera.version`
-	if [[ "$?" != "0" ]];then
+	#echo "Update url: ${updateurl}/${board}/${updatetype}/last"
+	test "${board}" = "rpi4" && board=rpi464 # "temporarly" download on rpi464 for rpi4
+	available=`wget -qO- ${updateurl}/${board}/${updatetype}/last/batocera.version`
+	if [ "$?" != "0" ];then
 	        echo "Unable to access the url" >&2
 		exit 2
+	fi
+	# hum, i don't know how to check correctly while the ws return success in case of real 404
+	nbytes=`echo "${available}" | wc -c`
+	if test "${nbytes}" -ge 50
+	then
+	    echo "Unable to retrieve the version" >&2
+	    exit 2
 	fi
 	installed=`cat /usr/share/batocera/batocera.version`
 
 	echo "${available}"
 
-	if [[ "$available" != "$installed" ]]; then
+	if [ "$available" != "$installed" ]; then
 		exit 0
 	fi
 	exit 12
 fi
 
-if [ "$command" == "update" ];then
+if [ "$command" = "update" ];then
 	batocera-upgrade
 	exit $?
 fi
 
-if [[ "$command" == "wifi" ]]; then
-        ssid="$3"
-        psk="$4"
-
-        if [[ "$mode" == "enable" ]]; then
-            echo "configure wifi" >> $log
-	    mkdir -p "/var/lib/connman" || exit 1
-	    cat > "/var/lib/connman/batocera_wifi.config" <<EOF
-[global]
-Name=batocera
-
-[service_batocera_default]
-Type=wifi
-Name=${ssid}
-EOF
-	    if test "${psk}" != ""
-	    then
-		echo "Passphrase=${psk}" >> "/var/lib/connman/batocera_wifi.config"
-	    fi
-
-	    connmanctl enable wifi || exit 1
-	    connmanctl scan   wifi || exit 1
-            exit 0
-        fi
-  	if [[ "$mode" =~ "start" ]]; then
-            if [[ "$mode" != "forcestart" ]]; then
-                settingsWlan="`$systemsetting -command load -key wifi.enabled`"
-                if [ "$settingsWlan" != "1" ];then
-                    exit 1
-                fi
-            fi
-	    connmanctl enable wifi || exit 1
-	    connmanctl scan   wifi || exit 1
-	    exit 0
-        fi
-        if [[ "$mode" == "disable" ]]; then
-	    connmanctl disable wifi
-            exit $?
-        fi
-	if [[ "$mode" == "list" ]]; then
-	    WAVAILABLE=$(connmanctl services | cut -b 5- | sed -e s+'^\([^ ]*\).*$'+'\1'+ | grep -vE '^Wired$|^<hidden>$')
-	    if test -n "${ssid}"
-	    then
-		echo "${WAVAILABLE}" | grep -qE '^'"${ssid}"'$' || echo "${ssid}"
-	    fi
-	    echo "${WAVAILABLE}"
-            exit 0
-	fi
-fi
-
-if [[ "$command" == "storage" ]]; then
-    if [[ "$mode" == "current" ]]; then
+if [ "$command" = "storage" ]; then
+    if [ "$mode" = "current" ]; then
 	if test -e $storageFile
 	then
             SHAREDEVICE=`cat ${storageFile} | grep "sharedevice=" | head -n1 | cut -d'=' -f2`
-            [[ "$?" -ne "0" || "$SHAREDEVICE" == "" ]] && SHAREDEVICE=INTERNAL
+            [ "$?" -ne "0" -o "$SHAREDEVICE" = "" ] && SHAREDEVICE=INTERNAL
 	    echo "$SHAREDEVICE"
 	else
 	    echo "INTERNAL"
 	fi
 	exit 0
     fi
-    if [[ "$mode" == "list" ]]; then
-	echo "INTERNAL"
-	echo "ANYEXTERNAL"
-	echo "RAM"
+    if [ "$mode" = "list" ]; then
+	echo "INTERNAL INTERNAL"
+	echo "ANYEXTERNAL ANY EXTERNAL"
 
 	INTERNAL_DEVICE=$(batocera-part share_internal)
 	PARTPREFIX=$(batocera-part prefix "${INTERNAL_DEVICE}")
@@ -360,9 +241,9 @@ if [[ "$command" == "storage" ]]; then
 	    sed -e s+'^NAME="[^"]*" FSTYPE="[^"]*" LABEL="\([^"]*\)" UUID="\([^"]*\)" SIZE="\([^"]*\)" TYPE="[^"]*"$'+'DEV \2 \1 - \3'+
 	exit 0
     fi
-    if [[ "${mode}" == "INTERNAL" || "${mode}" == "ANYEXTERNAL" || "${mode}" == "RAM" || "${mode}" == "DEV" ]]; then
+    if [ "${mode}" = "INTERNAL" -o "${mode}" = "ANYEXTERNAL" -o "${mode}" = "RAM" -o "${mode}" = "DEV" ]; then
 	preBootConfig
-	if [[ "${mode}" == "INTERNAL" || "${mode}" == "ANYEXTERNAL" || "${mode}" == "RAM" ]]; then
+	if [ "${mode}" = "INTERNAL" -o "${mode}" = "ANYEXTERNAL" -o "${mode}" = "RAM" ]; then
             if grep -qE "^sharedevice=" "${storageFile}"
 	    then
                sed -i "s|sharedevice=.*|sharedevice=${mode}|g" "${storageFile}"
@@ -370,7 +251,7 @@ if [[ "$command" == "storage" ]]; then
                echo "sharedevice=${mode}" >> "${storageFile}"
             fi
 	fi
-	if [[ "${mode}" == "DEV" ]]; then
+	if [ "${mode}" = "DEV" ]; then
             if grep -qE "^sharedevice=" "${storageFile}"
 	    then
                sed -i "s|sharedevice=.*|sharedevice=${mode} $extra1|g" "${storageFile}"
@@ -383,7 +264,7 @@ if [[ "$command" == "storage" ]]; then
     fi
 fi
 
-if [[ "$command" == "forgetBT" ]]; then
+if [ "$command" = "forgetBT" ]; then
    killall -9 hcitool
    /etc/init.d/S32bluetooth stop
    rm -rf /var/lib/bluetooth
@@ -393,8 +274,8 @@ if [[ "$command" == "forgetBT" ]]; then
    exit 0
 fi
 
-if [ "$command" == "tz" ];then
-    if test "$mode" == ""
+if [ "$command" = "tz" ];then
+    if test "$mode" = ""
     then
 	cat /usr/share/batocera/tz
     else

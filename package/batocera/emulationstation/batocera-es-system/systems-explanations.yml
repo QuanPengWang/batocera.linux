@@ -1,7 +1,7 @@
 default:
   3do:
     libretro:
-      4do:
+      opera:
         explanation: |
           only available on selected boards: requires a powerfull one
   3ds:
@@ -62,7 +62,7 @@ default:
     pcsx2:
       pcsx2:
         explanation: |
-          PCSX2 only works  on x86 and x86_64 platforms and requires a good cpu.
+          PCSX2 only works on x86 and x86_64 platforms and requires a good cpu & gpu.
   snes:
     libretro:
       bsnes:
@@ -108,10 +108,10 @@ rpi3:
     mupen64plus:
       gliden64:
         flags: [slow_games]
-odroidn2:
+s922x:
   megadrive:
     libretro:
-      genesisplusgx: &odroidn2_megadrive
+      genesisplusgx: &s922x_megadrive
         explanation: |
           On  odroid n2, genesisplusgx crashes with some games (for example at the begining of Altered Beast).
-      picodrive: *odroidn2_megadrive
+      picodrive: *s922x_megadrive

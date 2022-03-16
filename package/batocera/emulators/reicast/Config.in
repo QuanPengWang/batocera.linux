@@ -1,6 +1,0 @@
-config BR2_PACKAGE_REICAST
-        bool "reicast"
-        depends on BR2_PACKAGE_SDL2
-        depends on BR2_PACKAGE_LIBPNG
-        help
-          A  Dreamcast emulator

@@ -3,16 +3,13 @@
 # GAMECON_GPIO_RPI
 #
 ################################################################################
-GAMECON_GPIO_RPI_VERSION = 1.2
-GAMECON_GPIO_RPI_SOURCE = gamecon-gpio-rpi-dkms_$(GAMECON_GPIO_RPI_VERSION)_all.deb
-GAMECON_GPIO_RPI_SITE = http://www.niksula.hut.fi/~mhiienka/Rpi
+GAMECON_GPIO_RPI_VERSION = 5fe34e2fb05d0480439553a9d287ceebce2fc9f9
+GAMECON_GPIO_RPI_SITE = $(call github,marqs85,gamecon_gpio_rpi,$(GAMECON_GPIO_RPI_VERSION))
 
-GAMECON_GPIO_RPI_DEPENDENCIES = linux
-
-define GAMECON_GPIO_RPI_EXTRACT_CMDS
-	cp package/batocera/controllers/gamecon_gpio_rpi/gamecon_gpio_rpi.c $(@D)
-	cp package/batocera/controllers/gamecon_gpio_rpi/Makefile $(@D)
+define GAMECON_GPIO_RPI_FIX_EXTRACT
+	mv $(@D)/gamecon_gpio_rpi-1.4/* $(@D)/
 endef
+GAMECON_GPIO_RPI_POST_EXTRACT_HOOKS += GAMECON_GPIO_RPI_FIX_EXTRACT
 
 # Needed because can't pass cflags to cc
 define GAMECON_GPIO_RPI_RPI2_HOOK
@@ -26,12 +23,5 @@ ifeq ($(BR2_cortex_a53),y)
         GAMECON_GPIO_RPI_PRE_CONFIGURE_HOOKS += GAMECON_GPIO_RPI_RPI2_HOOK
 endif
 
-define GAMECON_GPIO_RPI_BUILD_CMDS
-        $(MAKE) -C $(@D) $(LINUX_MAKE_FLAGS) KERNELDIR=$(LINUX_DIR)
-endef
-
-define GAMECON_GPIO_RPI_INSTALL_TARGET_CMDS
-        $(MAKE) -C $(@D) $(LINUX_MAKE_FLAGS) KERNELDIR=$(LINUX_DIR) modules_install
-endef
-
+$(eval $(kernel-module))
 $(eval $(generic-package))

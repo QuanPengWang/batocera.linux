@@ -4,41 +4,67 @@ import batoceraFiles
 from settings.unixSettings import UnixSettings
 import xml.etree.ElementTree as ET
 import shlex
-from utils.logger import eslog
+from utils.logger import get_logger
 import yaml
 import collections
 
-class Emulator():
+eslog = get_logger(__name__)
 
+class Emulator():
     def __init__(self, name, rom):
         self.name = name
 
         # read the configuration from the system name
         self.config = Emulator.get_system_config(self.name, "/usr/share/batocera/configgen/configgen-defaults.yml", "/usr/share/batocera/configgen/configgen-defaults-arch.yml")
         if "emulator" not in self.config or self.config["emulator"] == "":
-            eslog.log("no emulator defined. exiting.")
+            eslog.error("no emulator defined. exiting.")
             raise Exception("No emulator found")
+
+        system_emulator = self.config["emulator"]
+        system_core     = self.config["core"]
 
         # load configuration from batocera.conf
         recalSettings = UnixSettings(batoceraFiles.batoceraConf)
         globalSettings = recalSettings.loadAll('global')
         systemSettings = recalSettings.loadAll(self.name)
+        folderSettings = recalSettings.loadAll(self.name + ".folder[\"" + os.path.dirname(rom) + "\"]")
         gameSettings = recalSettings.loadAll(self.name + "[\"" + os.path.basename(rom) + "\"]")
+
+        # add some other options
+        displaySettings = recalSettings.loadAll('display')
+        for opt in displaySettings:
+            self.config["display." + opt] = displaySettings[opt]
 
         # update config
         Emulator.updateConfiguration(self.config, globalSettings)
         Emulator.updateConfiguration(self.config, systemSettings)
+        Emulator.updateConfiguration(self.config, folderSettings)
         Emulator.updateConfiguration(self.config, gameSettings)
         self.updateFromESSettings()
-        eslog.log("uimode: {}".format(self.config['uimode']))
+        eslog.debug("uimode: {}".format(self.config['uimode']))
+
+        # forced emulators ?
+        self.config["emulator-forced"] = False
+        self.config["core-forced"] = False
+        if "emulator" in globalSettings or "emulator" in systemSettings or "emulator" in gameSettings:
+            self.config["emulator-forced"] = True
+        if "core" in globalSettings or "core" in systemSettings or "core" in gameSettings:
+            self.config["core-forced"] = True
 
         # update renderconfig
         self.renderconfig = {}
-        if "shaderset" in self.config and self.config["shaderset"] != "none":
-            self.renderconfig = Emulator.get_generic_config(self.name, "/usr/share/batocera/shaders/configs/" + self.config["shaderset"] + "/rendering-defaults.yml", "/usr/share/batocera/shaders/configs/" + self.config["shaderset"] + "/rendering-defaults-arch.yml")
-        if "shaderset" not in self.config: # auto
-            self.renderconfig = Emulator.get_generic_config(self.name, "/usr/share/batocera/shaders/configs/rendering-defaults.yml", "/usr/share/batocera/shaders/configs/rendering-defaults-arch.yml")
+        if "shaderset" in self.config:
+            if self.config["shaderset"] != "none":
+                if os.path.exists("/userdata/shaders/configs/" + self.config["shaderset"] + "/rendering-defaults.yml"):
+                    self.renderconfig = Emulator.get_generic_config(self.name, "/userdata/shaders/configs/" + self.config["shaderset"] + "/rendering-defaults.yml", "/userdata/shaders/configs/" + self.config["shaderset"] + "/rendering-defaults-arch.yml")
+                else:
+                    self.renderconfig = Emulator.get_generic_config(self.name, "/usr/share/batocera/shaders/configs/" + self.config["shaderset"] + "/rendering-defaults.yml", "/usr/share/batocera/shaders/configs/" + self.config["shaderset"] + "/rendering-defaults-arch.yml")
+            elif self.config["shaderset"] == "none":
+                self.renderconfig = Emulator.get_generic_config(self.name, "/usr/share/batocera/shaders/configs/rendering-defaults.yml", "/usr/share/batocera/shaders/configs/rendering-defaults-arch.yml")
 
+        # for compatibility with earlier Batocera versions, let's keep -renderer
+        # but it should be reviewed when we refactor configgen (to Python3?)
+        # so that we can fetch them from system.shader without -renderer
         systemSettings = recalSettings.loadAll(self.name + "-renderer")
         gameSettings = recalSettings.loadAll(self.name + "[\"" + os.path.basename(rom) + "\"]" + "-renderer")
 
@@ -57,19 +83,23 @@ class Emulator():
         :param merge_dct: dct merged into dct
         :return: None
         """
-        for k, v in merge_dct.iteritems():
-            if (k in dct and isinstance(dct[k], dict) and isinstance(merge_dct[k], collections.Mapping)):
+        for k, v in merge_dct.items():
+            if (k in dct and isinstance(dct[k], dict) and isinstance(merge_dct[k], collections.abc.Mapping)):
                 Emulator.dict_merge(dct[k], merge_dct[k])
             else:
                 dct[k] = merge_dct[k]
 
     @staticmethod
     def get_generic_config(system, defaultyml, defaultarchyml):
-        systems_default      = yaml.load(file(defaultyml,     "r"))
+        with open(defaultyml, 'r') as f:
+            systems_default = yaml.load(f, Loader=yaml.FullLoader)
 
         systems_default_arch = {}
         if os.path.exists(defaultarchyml):
-            systems_default_arch = yaml.load(file(defaultarchyml, "r"))
+            with open(defaultarchyml, 'r') as f:
+                systems_default_arch = yaml.load(f, Loader=yaml.FullLoader)
+                if systems_default_arch is None:
+                    systems_default_arch = {}
         dict_all = {}
 
         if "default" in systems_default:
@@ -98,16 +128,26 @@ class Emulator():
         return dict_result
 
     def isOptSet(self, key):
-        return key in self.config
+        if key in self.config:
+            return True
+        else:
+            return False
 
     def getOptBoolean(self, key):
-        if unicode(self.config[key]) == u'1':
-            return True
-        if unicode(self.config[key]) == u'true':
-            return True
-        if self.config[key] == True:
-            return True
+        if key in self.config:
+            if self.config[key] == '1':
+                return True
+            if self.config[key] == 'true':
+                return True
+            if self.config[key] == True:
+                return True
         return False
+
+    def getOptString(self, key):
+        if key in self.config:
+            if self.config[key]:
+                return self.config[key]
+        return ""
 
     @staticmethod
     def updateConfiguration(config, settings):

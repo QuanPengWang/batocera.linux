@@ -1,13 +1,15 @@
 ################################################################################
 #
-# MESEN
+# libretro-mesen
 #
 ################################################################################
-LIBRETRO_MESEN_VERSION = 373c489b01e6634c7c20174ee1f506e93586f2e6
-LIBRETRO_MESEN_SITE = $(call github,SourMesen,Mesen,$(LIBRETRO_MESEN_VERSION))
+# Version.: 0.9.9
+LIBRETRO_MESEN_VERSION = 7376e98b8b3a6ef4c9e5c8dd34b65554d322019c
+LIBRETRO_MESEN_SITE = $(call github,libretro,Mesen,$(LIBRETRO_MESEN_VERSION))
+LIBRETRO_MESEN_LICENSE = GPL
 
 define LIBRETRO_MESEN_BUILD_CMDS
-	CFLAGS="$(TARGET_CFLAGS)" CXXFLAGS="$(TARGET_CXXFLAGS)" $(MAKE) CXX="$(TARGET_CXX)" CC="$(TARGET_CC)" -C $(@D)/Libretro
+	$(TARGET_CONFIGURE_OPTS) $(MAKE) CXX="$(TARGET_CXX)" CC="$(TARGET_CC)" GIT_VERSION="" -C $(@D)/Libretro -f Makefile
 endef
 
 define LIBRETRO_MESEN_INSTALL_TARGET_CMDS

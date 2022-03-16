@@ -1,16 +1,15 @@
 ################################################################################
 #
-# odroidc2-uboot
+# uboot files for odroid c2
 #
 ################################################################################
-
-UBOOT_ODROID_C2_VERSION = 1.0.0
-UBOOT_ODROID_C2_SOURCE = batocera-odroidc2-uboot-$(UBOOT_ODROID_C2_VERSION).tar.gz
-UBOOT_ODROID_C2_SITE = https://github.com/batocera-linux/batocera-odroidc2-uboot/releases/download/$(UBOOT_ODROID_C2_VERSION)
+UBOOT_ODROID_C2_VERSION = 2021.04
+UBOOT_ODROID_C2_SOURCE = $(UBOOT_ODROID_C2_VERSION).tar.gz
+UBOOT_ODROID_C2_SITE = https://github.com/batocera-linux/uboot-odroid-c2/archive/refs/tags
 
 define UBOOT_ODROID_C2_INSTALL_TARGET_CMDS
-	cp $(@D)/u-boot.bin         $(BINARIES_DIR)/u-boot.bin
-	cp $(@D)/bl1.bin.hardkernel $(BINARIES_DIR)/bl1.bin.hardkernel
+	mkdir -p   $(BINARIES_DIR)/odroid-c2/
+	cp $(@D)/* $(BINARIES_DIR)/odroid-c2/
 endef
 
 $(eval $(generic-package))

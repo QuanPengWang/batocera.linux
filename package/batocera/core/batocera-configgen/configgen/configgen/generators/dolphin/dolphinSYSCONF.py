@@ -4,6 +4,9 @@
 from struct import pack
 from struct import unpack
 from os     import environ
+from utils.logger import get_logger
+
+eslog = get_logger(__name__)
 
 def readBEInt16(f):
     bytes = f.read(2)
@@ -25,7 +28,8 @@ def readBytes(f, x):
 
 def readString(f, x):
     bytes = f.read(x)
-    return str(bytes)
+    decodedbytes = bytes.decode('utf-8')
+    return str(decodedbytes)
 
 def readInt8(f):
     bytes = f.read(1)
@@ -41,13 +45,13 @@ def readWriteEntry(f, setval):
     itemType       = (itemHeader & 0xe0) >> 5
     itemNameLength = (itemHeader & 0x1f) + 1
     itemName       = readString(f, itemNameLength)
-
+    
     if itemName in setval:
         if itemType == 3: # byte
             itemValue = setval[itemName]
             writeInt8(f, itemValue)
         else:
-            raise Exception("not writable type {} : %{}%".format(itemType))
+            raise Exception("not writable type {}".format(itemType))
     else:
         if itemType == 1: # big array
             dataSize = readBEInt16(f) + 1
@@ -69,10 +73,10 @@ def readWriteEntry(f, setval):
         elif itemType == 7: # bool
             itemValue = readInt8(f)
         else:
-            raise Exception("unknown type {} : %{}%".format(itemType))
+            raise Exception("unknown type {}".format(itemType))
 
     if not setval or itemName in setval:
-        print('{:12s} = {}'.format(itemName, itemValue))
+        eslog.debug('{:12s} = {}'.format(itemName, itemValue))
 
 def readWriteFile(filepath, setval):
     # open in read read/write depending of the action
@@ -80,7 +84,7 @@ def readWriteFile(filepath, setval):
         f = open(filepath, "rb")
     else:
         f = open(filepath, "r+b")
-
+    
     try:
         version    = readString(f, 4) # read SCv0
         numEntries = readBEInt16(f)   # num entries
@@ -103,13 +107,12 @@ def getWiiLangFromEnvironment():
         return availableLanguages["en_US"]
 
 def getRatioFromConfig(config, gameResolution):
+    # Sets the setting available to the Wii's internal NAND. Only has two values:
     # 0: 4:3 ; 1: 16:9
-    if "ratio" in config:
-        if config["ratio"] == "4/3" or (config["ratio"] == "auto" and gameResolution["width"] / float(gameResolution["height"]) < (16.0 / 9.0) - 0.1): # let a marge):
-            return 0
-        else:
-            return 1
-    return 0
+    if config["tv_mode"] == "1":
+        return 1
+    else:
+        return 0
 
 def update(config, filepath, gameResolution):
     arg_setval = { "IPL.LNG": getWiiLangFromEnvironment(), "IPL.AR": getRatioFromConfig(config, gameResolution) }

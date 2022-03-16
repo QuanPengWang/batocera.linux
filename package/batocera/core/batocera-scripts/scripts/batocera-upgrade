@@ -2,38 +2,59 @@
 
 do_clean() {
     test -n "${GETPERPID}" && kill -9 "${GETPERPID}"
+    rm -f "/userdata/system/upgrade/upgrade_message.txt"
     rm -f "/userdata/system/upgrade/boot.tar.xz"
     rm -f "/userdata/system/upgrade/boot.tar.xz.md5"
+    if test $# -eq 1; then
+        [ "$1" = "0" ] && echo "Finally syncing of disk ...>>>100"
+        [ "$1" = "1" ] && echo "removed downloaded files, sync disk now"
+    fi
 }
 trap do_clean EXIT
 
-getPer() {
-    TARVAL=$1
+# Create upgrade messages for the badge (TERMINAL=0) or plain text output
+do_upgmsg() {
+    if [ $TERMINAL -eq 0 ]; then
+        echo "$1" > /userdata/system/upgrade/upgrade_message.txt
+        [ -n "$2" ] && sleep $2
+    else
+        echo "$1"
+    fi
+}
 
+do_badgeines() {
+    TARVAL=$1
+    COUNT=0
     while true
     do
-	CURVAL=$(stat "/userdata/system/upgrade/boot.tar.xz" | grep -E '^[ ]*Size:' | sed -e s+'^[ ]*Size: \([0-9][0-9]*\) .*$'+'\1'+)
-	CURVAL=$((CURVAL / 1024 / 1024))
-	PER=$(expr ${CURVAL} '*' 100 / ${TARVAL})
-	echo "downloading >>> ${PER}%"
-	sleep 5
+        if [ -f "/userdata/system/upgrade/upgrade_message.txt" ]; then
+            [ $COUNT -gt 100 ] && COUNT=0
+            MSG_STRING="$(cat /userdata/system/upgrade/upgrade_message.txt)"
+            echo "$MSG_STRING>>>$COUNT"
+            COUNT=$((COUNT+5))
+            sleep 0.1
+        else
+            CURVAL=$(stat "/userdata/system/upgrade/boot.tar.xz" | grep -E '^[ ]*Size:' | sed -e s+'^[ ]*Size: \([0-9][0-9]*\) .*$'+'\1'+)
+            CURVAL=$((CURVAL / 1024 / 1024))
+            PER=$((CURVAL * 100 / TARVAL))
+            echo "$CURVAL of $TARVAL MB downloaded ... >>> ${PER}%"
+            sleep 5
+        fi
     done
 }
 
-CUSTOM_URLDIR=
-if test $# -eq 1
-then
-    CUSTOM_URLDIR=$1
-fi
+# ---- MAIN ----
+echo "Starting the upgrade..."
 
-echo "starting the upgrade..."
+# --- Prepare update URLs ---
 
-updateurl="https://batocera-linux.xorhub.com/upgrades"
-systemsetting="python /usr/lib/python2.7/site-packages/configgen/settings/batoceraSettings.py"
+updateurl="https://updates.batocera.org"
 
-arch=$(cat /usr/share/batocera/batocera.arch)
-updatetype=$($systemsetting -command load -key updates.type)
-settingsupdateurl=$($systemsetting -command load -key updates.url)
+board=$(cat /boot/boot/batocera.board)
+test "${board}" = "rpi4" && board=rpi464 # "temporarly" download on rpi464 for rpi4
+
+updatetype="$(/usr/bin/batocera-settings-get updates.type)"
+settingsupdateurl="$(/usr/bin/batocera-settings-get updates.url)"
 
 # customizable upgrade url website
 test -n "${settingsupdateurl}" && updateurl="${settingsupdateurl}"
@@ -41,26 +62,29 @@ test -n "${settingsupdateurl}" && updateurl="${settingsupdateurl}"
 # force a default value in case the value is removed or miswritten
 test "${updatetype}" != "stable" -a "${updatetype}" != "unstable" -a "${updatetype}" != "beta" && updatetype="stable"
 
+# custom the url directory
+DWD_HTTP_DIR="${updateurl}/${board}/${updatetype}/last"
+
+# custom CLI url
+test $# -eq 1 && DWD_HTTP_DIR="$1"
+
+# started from Terminal/SSH (TERMINAL=1) or from ES (TERMINAL=0)
+[ -t 1 ] && TERMINAL=1 || TERMINAL=0
+
+# --- Prepare file downloads ---
+
 # download directory
 mkdir -p /userdata/system/upgrade || exit 1
-
-# custom the url directory
-DWD_HTTP_DIR="${updateurl}/${arch}/${updatetype}/last"
-
-if test -n "${CUSTOM_URLDIR}"
-then
-    DWD_HTTP_DIR="${CUSTOM_URLDIR}"
-fi
 
 # get size to download
 url="${DWD_HTTP_DIR}/boot.tar.xz"
 echo "url: ${url}"
-headers=$(curl -sfIL ${url})
+headers=$(curl -A "batocera-upgrade.header" -sfIL "${url}")
 test $? -eq 0 || exit 1
-size=$(echo "$headers" | grep "Content-Length: " | sed -e s+'^Content-Length: \([0-9]*\).*$'+'\1'+)
+size=$(echo "$headers" | grep "Content-Length: " | tail -1 | sed -e s+'^Content-Length: \([0-9]*\).*$'+'\1'+) # take the last one in case of redirection
 size=$((size / 1024 / 1024))
 test $? -eq 0 || exit 1
-echo "need to download ${size}mB"
+echo "need to download ${size}mb"
 
 # check free space on fs
 for fs in /userdata /boot
@@ -69,37 +93,41 @@ do
     test $? -eq 0 || exit 1
     if test "${size}" -gt "${freespace}"
     then
-	echo "Not enough space on ${fs} to download the update"
-	exit 1
+        echo "Not enough space on ${fs} to download the update"
+        exit 1
     fi
 done
 
-# downlaod
-url="${DWD_HTTP_DIR}/boot.tar.xz"
-
-touch "/userdata/system/upgrade/boot.tar.xz"
-getPer "${size}" &
-GETPERPID=$!
-mkdir -p "/userdata/system/upgrade" || exit 1
-curl -sfL "${url}" -o "/userdata/system/upgrade/boot.tar.xz" || exit 1
-kill -9 "${GETPERPID}"
-GETPERPID=
+##### Up to this the GUI was not used, now do_upgmsg will automatically decide which output to use
+# download
+if [ $TERMINAL -eq 0 ]; then
+    # download inside ES with badge
+    touch "/userdata/system/upgrade/boot.tar.xz"
+    do_badgeines "${size}" &
+    GETPERPID=$!
+    curl -A "batocera-upgrade" -sfL "${url}" -o "/userdata/system/upgrade/boot.tar.xz" || exit 1
+    do_upgmsg "Calculating md5 checksum ..."
+else
+    # download inside SSH or terminal
+    wget -U "batocera-upgrade" -q --show-progress "${url}" -O "/userdata/system/upgrade/boot.tar.xz" || exit 1
+	echo "Check proper file download, checking md5sum - please wait"
+fi
 
 # try to download an md5 checksum
-curl -sfL "${url}.md5" -o "/userdata/system/upgrade/boot.tar.xz.md5"
+curl -A "batocera-upgrade.md5" -sfL "${url}.md5" -o "/userdata/system/upgrade/boot.tar.xz.md5"
 if test -e "/userdata/system/upgrade/boot.tar.xz.md5"
 then
     DISTMD5=$(cat "/userdata/system/upgrade/boot.tar.xz.md5")
     CURRMD5=$(md5sum "/userdata/system/upgrade/boot.tar.xz" | sed -e s+' .*$'++)
     if test "${DISTMD5}" = "${CURRMD5}"
     then
-	echo "valid checksum."
+        do_upgmsg "Checksum validated ..." 2
     else
-	echo "invalid checksum. Got +${DISTMD5}+. Attempted +${CURRMD5}+."
-	exit 1
+        do_upgmsg "Checksum error ..." 5
+        exit 1
     fi
 else
-    echo "no checksum found. don't check the file."
+    do_upgmsg "Missing md5 file - proceed ..." 3
 fi
 
 # remount /boot in rw
@@ -112,51 +140,52 @@ fi
 # backup boot files
 # all these files doesn't exist on non rpi platform, so, we have to test them
 # don't put the boot.ini file while it's not really to be customized
-echo "backing up some boot files"
+do_upgmsg "Backing up config files ..." 0.5
 BOOTFILES="config.txt batocera-boot.conf"
 for BOOTFILE in ${BOOTFILES}
 do
     if test -e "/boot/${BOOTFILE}"
     then
-	if ! cp "/boot/${BOOTFILE}" "/boot/${BOOTFILE}.upgrade"
-	then
-	    exit 1
-	fi
+        if ! cp "/boot/${BOOTFILE}" "/boot/${BOOTFILE}.upgrade"
+        then
+            exit 1
+        fi
     fi
 done
 
 # extract file on /boot
-echo "extracting files"
+do_upgmsg "Extracting files ..."
 if ! (cd /boot && xz -dc < "/userdata/system/upgrade/boot.tar.xz" | tar xvf -)
 then
     exit 1
 fi
 
 # restore boot files
+do_upgmsg "Restoring config files ..." 0.5
 for BOOTFILE in ${BOOTFILES}
 do
     if test -e "/boot/${BOOTFILE}.upgrade"
     then
-	if ! mv "/boot/${BOOTFILE}.upgrade" "/boot/${BOOTFILE}"
-	then
-	    echo "Outch" >&2
-	fi
+        if ! mv "/boot/${BOOTFILE}.upgrade" "/boot/${BOOTFILE}"
+        then
+            echo "Outch" >&2
+        fi
     fi
 done
 
-echo "synchronizing disk"
-
 # remount /boot in ro
+do_upgmsg "Doing final cleanups ..." 0.5
 if ! mount -o remount,ro /boot
 then
     exit 1
 fi
 
-# a sync
-rm -f "/userdata/system/upgrade/boot.tar.xz"
-rm -f "/userdata/system/upgrade/boot.tar.xz.md5"
+# a sync with some cleanups of downloaded and created files
+do_clean $TERMINAL
 sync
 
-echo "done."
+# exit from ES-badge without additional messages
+[ $TERMINAL -eq 0 ] && exit 0
 
+echo; echo "Done. Please reboot the system so that the changes take effect!"
 exit 0

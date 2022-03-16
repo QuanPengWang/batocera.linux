@@ -1,59 +1,46 @@
 ################################################################################
 #
-# LIBRETRO-FLYCAST
+# libretro-flycast
 #
 ################################################################################
-# Version.: Commits on Sep 23, 2019
-LIBRETRO_FLYCAST_VERSION = 42e30be9dbc12fa8ef0ba2471fd1c916cbb21121
-LIBRETRO_FLYCAST_SITE = $(call github,libretro,flycast,$(LIBRETRO_FLYCAST_VERSION))
+# Version: Commits on Feb 28, 2022
+LIBRETRO_FLYCAST_VERSION = 830ffd0559eafc2954ffc957e7e7323a9421ca55
+LIBRETRO_FLYCAST_SITE = https://github.com/flyinghead/flycast.git
+LIBRETRO_FLYCAST_SITE_METHOD=git
+LIBRETRO_FLYCAST_GIT_SUBMODULES=YES
 LIBRETRO_FLYCAST_LICENSE = GPLv2
+LIBRETRO_FLYCAST_DEPENDENCIES = retroarch
 
 LIBRETRO_FLYCAST_PLATFORM = $(LIBRETRO_PLATFORM)
 
-# LIBRETRO_PLATFORM is not good for this core, because
-# for rpi, it contains "unix rpi" and this core do an "if unix elif rpi ..."
+LIBRETRO_FLYCAST_CONF_OPTS = -DUSE_OPENMP=ON -DLIBRETRO=ON \
+    -DUSE_OPENGL=ON -DBUILD_SHARED_LIBS=OFF -DBUILD_EXTERNAL=OFF
 
-# special cases for special plateform then...
-# an other proper way may be to redo the Makefile to do "if rpi elif unix ..." (from specific to general)
-# the Makefile imposes that the platform has gles (or force FORCE_GLES is set) to not link with lGL
-
-ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_RPI3),y)
-	LIBRETRO_FLYCAST_PLATFORM = rpi3
-	LIBRETRO_FLYCAST_EXTRA_ARGS += FORCE_GLES=1 ARCH=arm
+# determine the best GLES version to use - prefer GLES3
+ifeq ($(BR2_PACKAGE_BATOCERA_GLES3),y)
+    LIBRETRO_FLYCAST_CONF_OPTS += -DUSE_GLES=ON -DUSE_GLES2=OFF
+else ifeq ($(BR2_PACKAGE_BATOCERA_GLES2),y)
+    LIBRETRO_FLYCAST_CONF_OPTS += -DUSE_GLES2=ON -DUSE_GLES=OFF
 endif
 
-ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_XU4)$(BR2_PACKAGE_BATOCERA_TARGET_LEGACYXU4),y)
-	LIBRETRO_FLYCAST_PLATFORM = odroid
-	LIBRETRO_FLYCAST_EXTRA_ARGS += BOARD=ODROID-XU4 FORCE_GLES=1 ARCH=arm
+ifeq ($(BR2_PACKAGE_BATOCERA_VULKAN),y)
+    LIBRETRO_FLYCAST_CONF_OPTS += -DUSE_VULKAN=ON
+else
+    LIBRETRO_FLYCAST_CONF_OPTS += -DUSE_VULKAN=OFF
 endif
 
-ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_ROCKPRO64),y)
-	LIBRETRO_FLYCAST_PLATFORM = rockpro64
-	LIBRETRO_FLYCAST_EXTRA_ARGS += ARCH=arm
+# RPI: use the legacy Broadcom GLES libraries
+ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_RPI2)$(BR2_PACKAGE_BATOCERA_TARGET_RPIZERO2),y)
+    LIBRETRO_FLYCAST_CONF_OPTS += -DUSE_VIDEOCORE
 endif
 
-ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_ODROIDN2),y)
-	LIBRETRO_FLYCAST_PLATFORM = odroid-n2
-	LIBRETRO_FLYCAST_EXTRA_ARGS += ARCH=arm
+ifeq ($(BR2_PACKAGE_HAS_LIBMALI),y)
+    LIBRETRO_FLYCAST_CONF_OPTS += -DUSE_MALI=ON
 endif
-
-ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_TINKERBOARD),y)
-	LIBRETRO_FLYCAST_PLATFORM = tinkerboard
-	LIBRETRO_FLYCAST_EXTRA_ARGS += ARCH=arm
-endif
-
-ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_MIQI),y)
-	LIBRETRO_FLYCAST_PLATFORM = tinkerboard
-	LIBRETRO_FLYCAST_EXTRA_ARGS += ARCH=arm
-endif
-
-define LIBRETRO_FLYCAST_BUILD_CMDS
-    CFLAGS="$(TARGET_CFLAGS)" CXXFLAGS="$(TARGET_CXXFLAGS)" $(MAKE) CXX="$(TARGET_CXX)" CC="$(TARGET_CC)" AR="$(TARGET_AR)" -C $(@D)/ -f Makefile $(LIBRETRO_FLYCAST_EXTRA_ARGS) platform="$(LIBRETRO_FLYCAST_PLATFORM)"
-endef
 
 define LIBRETRO_FLYCAST_INSTALL_TARGET_CMDS
 	$(INSTALL) -D $(@D)/flycast_libretro.so \
 		$(TARGET_DIR)/usr/lib/libretro/flycast_libretro.so
 endef
 
-$(eval $(generic-package))
+$(eval $(cmake-package))

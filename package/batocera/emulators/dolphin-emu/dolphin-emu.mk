@@ -1,19 +1,37 @@
 ################################################################################
 #
-# DOLPHIN EMU
+# dolphin-emu
 #
 ################################################################################
-# Version: 5.0-9896
-DOLPHIN_EMU_VERSION = bfde5b931e542ec2b8a5eee72d4794515955c7e8
+
+# version - 5.0-15993 - Commits on Feb 1, 2022
+DOLPHIN_EMU_VERSION = 5e595616379a694789fe749e40a27ef069f0090e
 DOLPHIN_EMU_SITE = $(call github,dolphin-emu,dolphin,$(DOLPHIN_EMU_VERSION))
 DOLPHIN_EMU_LICENSE = GPLv2+
-DOLPHIN_EMU_DEPENDENCIES = xserver_xorg-server libevdev ffmpeg zlib libpng lzo libusb libcurl sfml bluez5_utils qt5base hidapi
+DOLPHIN_EMU_DEPENDENCIES = libevdev ffmpeg zlib libpng lzo libusb libcurl bluez5_utils hidapi xz host-xz
 DOLPHIN_EMU_SUPPORTS_IN_SOURCE_BUILD = NO
 
 DOLPHIN_EMU_CONF_OPTS  = -DTHREADS_PTHREAD_ARG=OFF
 DOLPHIN_EMU_CONF_OPTS += -DUSE_DISCORD_PRESENCE=OFF
 DOLPHIN_EMU_CONF_OPTS += -DBUILD_SHARED_LIBS=OFF
-DOLPHIN_EMU_CONF_OPTS += -DENABLE_EGL=OFF
 DOLPHIN_EMU_CONF_OPTS += -DDISTRIBUTOR='batocera.linux'
+DOLPHIN_EMU_CONF_OPTS += -DUSE_MGBA=OFF
+
+ifeq ($(BR2_PACKAGE_XSERVER_XORG_SERVER),y)
+DOLPHIN_EMU_DEPENDENCIES += xserver_xorg-server qt5base
+DOLPHIN_EMU_CONF_OPTS += -DENABLE_NOGUI=OFF
+DOLPHIN_EMU_CONF_OPTS += -DENABLE_EGL=OFF
+endif
+
+ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_S922X),y)
+DOLPHIN_EMU_DEPENDENCIES += libdrm
+DOLPHIN_EMU_CONF_OPTS += -DENABLE_QT=OFF
+DOLPHIN_EMU_CONF_OPTS += -DENABLE_EGL=ON
+DOLPHIN_EMU_CONF_OPTS += -DENABLE_LTO=ON
+endif
+
+ifeq ($(BR2_PACKAGE_BATOCERA_PANFROST_MESA3D)$(BR2_PACKAGE_BATOCERA_TARGET_X86_64),y)
+DOLPHIN_EMU_CONF_OPTS += -DENABLE_VULKAN=ON
+endif
 
 $(eval $(cmake-package))

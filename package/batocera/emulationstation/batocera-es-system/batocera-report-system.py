@@ -34,22 +34,34 @@ class EsSystemConf:
         if nb_variants == nb_explanations:
             return False
         return True
-    
+
+    @staticmethod
+    def find_boards_from_config(config):
+        if "BR2_TARGET_BATOCERA_IMAGES" not in config:
+            return []
+        dirs = config["BR2_TARGET_BATOCERA_IMAGES"][1:-1].split(" ")
+        boards = []
+        for dir in dirs:
+            boards.append(os.path.basename(dir))
+        return boards
+
     @staticmethod
     def generate(rulesYaml, explanationsYaml, configsDir, defaultsDir):
-        #rules = yaml.load(open(rulesYaml, "r"), Loader=yaml.FullLoader)
-        rules = yaml.load(open(rulesYaml, "r"))
-        #explanations = yaml.load(open(explanationsYaml, "r"), Loader=yaml.FullLoader)
-        explanations = yaml.load(open(explanationsYaml, "r"))
+        rules = yaml.safe_load(open(rulesYaml, "r"))
+        explanations = yaml.safe_load(open(explanationsYaml, "r"))
         result_archs = {}
 
-        systemsConfig = yaml.load(open(defaultsDir + "/configgen-defaults.yml", "r"))
-        
+        systemsConfig = yaml.safe_load(open(defaultsDir + "/configgen-defaults.yml", "r"))
+
         for configFile in os.listdir(configsDir):
             arch = configFile.replace("config_", "")
             config = EsSystemConf.loadConfig(configsDir + "/" + configFile)
-            archSystemsConfig = yaml.load(open(defaultsDir + "/configgen-defaults-" + arch + ".yml", "r"))
+            archSystemsConfig = yaml.safe_load(open(defaultsDir + "/configgen-defaults-" + arch + ".yml", "r"))
+            # case when there is no arch file
+            if archSystemsConfig is None:
+                archSystemsConfig = {}
             result_systems = {}
+            boards = EsSystemConf.find_boards_from_config(config)
             for system in rules:
                 # default emulator
                 defaultEmulator = None
@@ -69,7 +81,8 @@ class EsSystemConf:
                 if any(emulators["emulators"]):
                     emulators["red_flag"] = EsSystemConf.hasRedFlag(emulators["nb_variants"], emulators["nb_explanations"], emulators["nb_all_explanations"])
                     result_systems[system] = emulators
-            result_archs[arch] = result_systems
+            for board in boards:
+                result_archs[board] = result_systems
 
         print(json.dumps(result_archs, indent=2, sort_keys=True, cls=SortedListEncoder))
 
@@ -80,9 +93,12 @@ class EsSystemConf:
         with open(configFile) as fp:
             line = fp.readline()
             while line:
-                m = re.search("^([^ ]+)=y$", line)
+                m = re.search("^([^ ]+)=[ ]*(.*)[ ]*$", line)
                 if m:
-                    config[m.group(1)] = 1
+                    if m.group(2) == "y":
+                        config[m.group(1)] = 1
+                    else:
+                        config[m.group(1)] = m.group(2)
                 line = fp.readline()
         return config
 
@@ -113,7 +129,7 @@ class EsSystemConf:
         nb_all_explanations = 0
 
         defaultFound = False
-        
+
         emulators = {}
         if "emulators" in data:
             emulators = data["emulators"]
@@ -163,8 +179,8 @@ class EsSystemConf:
             emulators_result[emulator] = result_cores
 
         if nb_variants > 0 and defaultFound == False:
-            raise Exception("default core not enabled for " + arch + "/" + system + " (" + defaultEmulator + "/" + defaultCore + ")")
-            
+            raise Exception("default core not enabled for {}/{} ({}/{})" . format(arch, system, defaultEmulator, defaultCore))
+
         result = {}
         result["name"] = data["name"]
         result["nb_variants"] = nb_variants
@@ -183,7 +199,7 @@ class EsSystemConf:
             raise AttributeError('keys_exists() expects dict as first argument.')
         if len(keys) == 0:
             raise AttributeError('keys_exists() expects at least two arguments, one given.')
-    
+
         _element = element
         for key in keys:
             try:
@@ -191,7 +207,7 @@ class EsSystemConf:
             except KeyError:
                 return False
         return True
-    
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("yml",              help="es_systems.yml definition file")

@@ -1,7 +1,13 @@
-#!/bin/bash
+#!/bin/sh
 
-ARCH=$(cat /usr/share/batocera/batocera.arch)
+f_usage() {
+	echo "$0 list" >&2
+	echo "$0 set <VALUE>" >&2
+}
+
+ARCH="$(cat /usr/share/batocera/batocera.arch)"
 GRPICONFFILE="/boot/config.txt"
+GODROIDCONFFILE="/boot/batocera-boot.conf"
 
 if test "${ARCH}" = "rpi3"
 then
@@ -11,21 +17,21 @@ then
     fi
 fi
 
-preBootRPIConfig() {
+preBootRWConfig() {
     mount -o remount,rw /boot
 }
 
-postBootRPIConfig() {
+postBootRWConfig() {
     mount -o remount,ro /boot
 }
 
 doList() {
     case "${ARCH}" in
-	"rpi1")
+    "rpi1")
 	    echo "none NONE"
 	    echo "high HIGH (950Mhz)"
 	    echo "turbo TURBO (1000Mhz)"
-	    echo "extrem EXTREM (1100Mhz)"
+	    echo "extreme EXTREME (1100Mhz)"
 	;;
 	"rpi2")
 	    echo "none NONE (900Mhz)"
@@ -35,26 +41,55 @@ doList() {
 	    echo "none NONE (1200Mhz)"
 	    echo "high HIGH (1300Mhz)"
 	    echo "turbo TURBO (1325Mhz)"
-	    echo "extrem EXTREM (1350Mhz)"
+	    echo "extreme EXTREME (1350Mhz)"
 	    ;;
 	"rpi3+")
 	    echo "none NONE (1400Mhz)"
 	    echo "high HIGH (1425Mhz)"
 	    echo "turbo TURBO (1450Mhz)"
-	    echo "extrem EXTREM (1500Mhz)"
+	    echo "extreme EXTREME (1500Mhz)"
+	    ;;
+	"rpi4")
+	    echo "none NONE (B0 - 1500Mhz or C0 - 1800MHz)"
+	    echo "high HIGH (B0 HEATSINK - 1700Mhz)"
+	    echo "turbo TURBO (B0 HEATSINK - 1800Mhz)"
+		echo "extreme EXTREME (HEATSINK & FAN 1950Mhz)"
+		echo "ruinsane INSANE (HEATSINK & FAN 2100Mhz)"
+		echo "cm4 CAUTION (C0 stepping only - HEATSINK & FAN 2275Mhz)"
+	    ;;
+    "rpizero2")
+	    echo "none NONE (1000Mhz)"
 	;;
+	"s922x")
+	    MODEL=$(cat /sys/firmware/devicetree/base/model)
+	    if test "${MODEL}" = "Hardkernel ODROID-N2Plus" -o "${MODEL}" = "Khadas VIM3" -o "${MODEL}" = "Beelink GT-King Pro"
+	    then
+		echo "none NONE (2200Mhz)"
+		echo "high HIGH (2300Mhz)"
+		echo "extreme EXTREME (2400Mhz)"
+	    fi
+	    ;;
 	*)
 	    echo "none NONE"
     esac
 }
 
 setValue_rpiNone() {
-    preBootRPIConfig || return 1
+    preBootRWConfig || return 1
     for entry in arm_freq core_freq sdram_freq force_turbo over_voltage over_voltage_sdram gpu_freq
     do
 	sed -i "/^${entry}/d" "${GRPICONFFILE}"
     done
-    postBootRPIConfig || return 1
+    postBootRWConfig || return 1
+}
+
+setValue_rpi4None() {
+    preBootRWConfig || return 1
+    for entry in over_voltage arm_freq gpu_freq
+    do
+	sed -i "/^${entry}/d" "${GRPICONFFILE}"
+    done
+    postBootRWConfig || return 1
 }
 
 setValue_rpiPutVars() {
@@ -66,9 +101,14 @@ setValue_rpiPutVars() {
     over_voltage_sdram=$6
     gpu_freq=$7
 
-    preBootRPIConfig || return 1
+    preBootRWConfig || return 1
 
     # put variable lines if not existing
+	if ! grep -q "Overclock" "${GRPICONFFILE}"
+    then
+        echo >> "${GRPICONFFILE}"
+		echo "[Overclock]" >> "${GRPICONFFILE}"
+    fi
     for entry in arm_freq core_freq sdram_freq force_turbo over_voltage over_voltage_sdram gpu_freq
     do
 	if ! grep -q "${entry}" "${GRPICONFFILE}"
@@ -89,14 +129,69 @@ setValue_rpiPutVars() {
     sed -i "s/#\?over_voltage_sdram=.*/over_voltage_sdram=${over_voltage_sdram}/g" "${GRPICONFFILE}" || return 1
     sed -i "s/#\?gpu_freq=.*/gpu_freq=${gpu_freq}/g"                               "${GRPICONFFILE}" || return 1
 
-    postBootRPIConfig || return 1
+    postBootRWConfig || return 1
+}
+
+setValue_rpi4PutVars() {
+    over_voltage=$1
+    arm_freq=$2
+    gpu_freq=$3
+
+    preBootRWConfig || return 1
+
+    # put variable lines if not existing
+    if ! grep -q "Overclock" "${GRPICONFFILE}"
+    then
+        echo >> "${GRPICONFFILE}"
+        echo "[Overclock]" >> "${GRPICONFFILE}"
+    fi
+    for entry in over_voltage arm_freq gpu_freq
+    do
+	if ! grep -q "${entry}" "${GRPICONFFILE}"
+	then
+	    if ! echo "${entry}=" >> "${GRPICONFFILE}"
+	    then
+		return 1
+	    fi
+	fi
+    done
+
+    # put values
+    sed -i "s/#\?over_voltage=.*/over_voltage=${over_voltage}/g" "${GRPICONFFILE}" || return 1
+    sed -i "s/#\?arm_freq=.*/arm_freq=${arm_freq}/g"       "${GRPICONFFILE}" || return 1
+    sed -i "s/#\?gpu_freq=.*/gpu_freq=${gpu_freq}/g"       "${GRPICONFFILE}" || return 1
+
+    postBootRWConfig || return 1
+}
+
+setValue_odroidn2() {
+    VALUE=$1
+
+    preBootRWConfig || return 1
+
+    # put variable lines if not existing
+    for entry in overclocking
+    do
+	if ! grep -q "${entry}" "${GODROIDCONFFILE}"
+	then
+	    if ! echo "${entry}=" >> "${GODROIDCONFFILE}"
+	    then
+		return 1
+	    fi
+	fi
+    done
+
+    # put values
+    sed -i "s/#\?overclocking=.*/overclocking=${VALUE}/g" "${GODROIDCONFFILE}" || return 1
+
+    postBootRWConfig || return 1
 }
 
 setValue() {
     VALUE=$1
 
     case "${ARCH}" in
-	"rpi1")
+    "rpi1")
 	    case "${VALUE}" in
 		"none")
 		    setValue_rpiNone
@@ -108,7 +203,7 @@ setValue() {
 		"turbo")
 		    setValue_rpiPutVars 1000 500 600 0 6 0 250
 		    ;;
-		"extrem")
+		"extreme")
 		    setValue_rpiPutVars 1100 550 600 1 8 6 250
 		    ;;
 	    esac
@@ -134,7 +229,7 @@ setValue() {
 		"turbo")
 		    setValue_rpiPutVars 1325 525 520 0 4 4 500
 		    ;;
-		"extrem")
+		"extreme")
 		    setValue_rpiPutVars 1350 550 550 1 4 5 525
 		    ;;
 	    esac
@@ -150,13 +245,53 @@ setValue() {
 		"turbo")
 		    setValue_rpiPutVars 1450 525 520 0 4 4 500
 		    ;;
-		"extrem")
+		"extreme")
 		    setValue_rpiPutVars 1500 550 550 1 4 5 525
 		    ;;
 	    esac
 	    ;;
+	"rpi4")
+	    case "${VALUE}" in
+		"none")
+		    setValue_rpi4None
+		    ;;
+		"high")
+		    setValue_rpi4PutVars 2 1700 500
+		    ;;
+		"turbo")
+		    setValue_rpi4PutVars 3 1800 600
+		    ;;
+		"extreme")
+		    setValue_rpi4PutVars 5 1950 700
+            ;;
+		"ruinsane")
+		    setValue_rpi4PutVars 6 2100 750
+            ;;
+		"cm4")
+		    setValue_rpi4PutVars 8 2275 750
+	    esac
+	    ;;
+    "rpizero2")
+	    case "${VALUE}" in
+		"none")
+		    setValue_rpiNone
+		    ;;
+	    esac
+	    ;;
+	"s922x")
+	    MODEL=$(cat /sys/firmware/devicetree/base/model)
+	    if test "${MODEL}" = "Hardkernel ODROID-N2Plus" -o "${MODEL}" = "Khadas VIM3" -o "${MODEL}" = "Beelink GT-King Pro"
+	    then
+		setValue_odroidn2 "${VALUE}"
+	    fi
+	    ;;
     esac
 }
+
+if [ $# -eq 0 ]; then
+	f_usage
+	exit 1
+fi
 
 ACTION=$1
 shift
@@ -174,6 +309,11 @@ case "${ACTION}" in
 	then
 	    exit 1
 	fi
+	;;
+	*)
+		f_usage
+		>&2 echo "error: invalid command ${ACTION}"
+		exit 1
 esac
 
 exit 0

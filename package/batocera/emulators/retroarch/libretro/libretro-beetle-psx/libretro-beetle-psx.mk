@@ -3,8 +3,8 @@
 # LIBRETRO_BEETLE_PSX
 #
 ################################################################################
-# Version.: Commits on Aug 17, 2019
-LIBRETRO_BEETLE_PSX_VERSION = fc06bbefaf1324b2ab2f77c518f986a0573d8a5b
+# Version.: Commits on Dec 10, 2021
+LIBRETRO_BEETLE_PSX_VERSION = 4a0cab1cd1e96e88ebed1d6a1fe27a95caa72767
 LIBRETRO_BEETLE_PSX_SITE = $(call github,libretro,beetle-psx-libretro,$(LIBRETRO_BEETLE_PSX_VERSION))
 LIBRETRO_BEETLE_PSX_LICENSE = GPLv2
 
@@ -12,13 +12,16 @@ LIBRETRO_BEETLE_PSX_EXTRAOPT=
 LIBRETRO_BEETLE_PSX_OUTFILE=mednafen_psx_libretro.so
 
 ifeq ($(BR2_PACKAGE_XORG7),y)
-	LIBRETRO_BEETLE_PSX_EXTRAOPT += HAVE_HW=1
+# Batocera - RPi4 required_hw_api = "OpenGL Core >= 3.3 | Vulkan >= 1.0"
+  ifeq ($(!BR2_PACKAGE_BATOCERA_RPI4_WITH_XORG),y)
+    LIBRETRO_BEETLE_PSX_EXTRAOPT += HAVE_HW=1
     LIBRETRO_BEETLE_PSX_OUTFILE=mednafen_psx_hw_libretro.so
+  endif
 endif
 
 define LIBRETRO_BEETLE_PSX_BUILD_CMDS
-    CFLAGS="$(TARGET_CFLAGS)" CXXFLAGS="$(TARGET_CXXFLAGS)" \
-		$(MAKE) LD="$(TARGET_CXX)" CXX="$(TARGET_CXX)" CC="$(TARGET_CC)" AR="$(TARGET_AR)" -C $(@D) -f Makefile $(LIBRETRO_BEETLE_PSX_EXTRAOPT) platform="$(LIBRETRO_PLATFORM)"
+    $(TARGET_CONFIGURE_OPTS) $(MAKE) CXX="$(TARGET_CXX)" CC="$(TARGET_CC)" -C $(@D) -f Makefile $(LIBRETRO_BEETLE_PSX_EXTRAOPT) platform="$(LIBRETRO_PLATFORM)" \
+        GIT_VERSION="-$(shell echo $(LIBRETRO_BEETLE_PSX_VERSION) | cut -c 1-7)"
 endef
 
 define LIBRETRO_BEETLE_PSX_INSTALL_TARGET_CMDS

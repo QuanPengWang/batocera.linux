@@ -1,11 +1,7 @@
 config BR2_PACKAGE_LIBRETRO_MESEN
         bool "libretro-mesen"
 	depends on BR2_PACKAGE_RETROARCH
-	depends on BR2_INSTALL_LIBSTDCPP
         help
-          Mesen
+          A libretro NES/Famicom emulator core.
 
 	  http://www.libretro.com
-
-comment "LIBRETRO_MESEN needs a toolchain w/ C++"
-	depends on !BR2_INSTALL_LIBSTDCPP

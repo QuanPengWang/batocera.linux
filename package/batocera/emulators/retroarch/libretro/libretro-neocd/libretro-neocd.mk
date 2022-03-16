@@ -4,25 +4,39 @@
 # NEOCD
 #
 ################################################################################
-# Version.: Commits on Jul 24, 2019
-LIBRETRO_NEOCD_VERSION = 639fb7ed476af34acb4bf41d1246a757d73ce45b
+# Version.: Commits on Nov 16, 2021
+LIBRETRO_NEOCD_VERSION = 83d10f3be10fff2f28aa56fc674c687528cb7f5c
 LIBRETRO_NEOCD_SITE = https://github.com/libretro/neocd_libretro.git
 LIBRETRO_NEOCD_SITE_METHOD=git
 LIBRETRO_NEOCD_GIT_SUBMODULES=YES
 LIBRETRO_NEOCD_LICENSE = GPLv3
 
+LIBRETRO_NEOCD_PLATFORM = $(LIBRETRO_PLATFORM)
+
+ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_RPI1),y)
+LIBRETRO_NEOCD_PLATFORM = rpi1
+
+else ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_RPI2),y)
+LIBRETRO_NEOCD_PLATFORM = rpi2
+
+else ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_RPI3)$(BR2_PACKAGE_BATOCERA_TARGET_RPIZERO2),y)
+    ifeq ($(BR2_arm),y)
+        LIBRETRO_NEOCD_PLATFORM = rpi3
+    else
+        LIBRETRO_NEOCD_PLATFORM = rpi3_64
+    endif
+
+else ifeq ($(BR2_PACKAGE_BATOCERA_TARGET_RPI4),y)
+LIBRETRO_NEOCD_PLATFORM = rpi4_64
+endif
+
+define LIBRETRO_NEOCD_BUILD_CMDS
+	$(TARGET_CONFIGURE_OPTS) $(MAKE) CXX="$(TARGET_CXX)" CC="$(TARGET_CC)" -C $(@D) -f Makefile platform="$(LIBRETRO_NEOCD_PLATFORM)"
+endef
+
 define LIBRETRO_NEOCD_INSTALL_TARGET_CMDS
-	$(INSTALL) -D $(@D)/libneocd_libretro.so \
+	$(INSTALL) -D $(@D)/neocd_libretro.so \
 		$(TARGET_DIR)/usr/lib/libretro/neocd_libretro.so
 endef
 
-define LIBRETRO_NEOCD_DISABLE_ARM_FLAGS
-	$(SED) 's|^set(CMAKE_CXX_FLAGS_RELEASE|#set(CMAKE_CXX_FLAGS_RELEASE|g' $(@D)/CMakeLists.txt
-endef
-
-ifeq ($(BR2_arm),y)
-else
-  LIBRETRO_NEOCD_PRE_CONFIGURE_HOOKS += LIBRETRO_NEOCD_DISABLE_ARM_FLAGS
-endif
-
-$(eval $(cmake-package))
+$(eval $(generic-package))
